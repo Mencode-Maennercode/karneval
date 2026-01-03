@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, Home, Briefcase, Settings, Info, Mail } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export default function Header() {
@@ -131,7 +131,7 @@ export default function Header() {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ duration: 0.25, ease: 'easeOut' }}
-              className="md:hidden fixed top-0 right-0 h-dvh w-[300px] bg-white shadow-2xl z-50 border-l border-gray-200"
+              className="md:hidden fixed top-0 right-0 h-[85vh] w-[300px] bg-white shadow-2xl z-50 border-l border-gray-200 rounded-l-3xl"
             >
               <div className="flex items-center justify-end h-16 px-5 border-b border-gray-200">
                 <button
@@ -145,19 +145,34 @@ export default function Header() {
               <nav className="px-5 py-4">
                 <ul className="space-y-1">
                   <li>
-                    <a href="#home" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Home</a>
+                    <a href="#home" className="flex items-center gap-3 rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Home size={20} className="text-brand-cyan" />
+                      <span>Home</span>
+                    </a>
                   </li>
                   <li>
-                    <a href="#leistungen" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Leistungen</a>
+                    <a href="#leistungen" className="flex items-center gap-3 rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Briefcase size={20} className="text-brand-cyan" />
+                      <span>Leistungen</span>
+                    </a>
                   </li>
                   <li>
-                    <a href="#arbeitsweise" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Arbeitsweise</a>
+                    <a href="#arbeitsweise" className="flex items-center gap-3 rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Settings size={20} className="text-brand-cyan" />
+                      <span>Arbeitsweise</span>
+                    </a>
                   </li>
                   <li>
-                    <a href="#hinweise" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Hinweise</a>
+                    <a href="#hinweise" className="flex items-center gap-3 rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Info size={20} className="text-brand-cyan" />
+                      <span>Hinweise</span>
+                    </a>
                   </li>
                   <li>
-                    <a href="#kontakt" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Kontakt</a>
+                    <a href="#kontakt" className="flex items-center gap-3 rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>
+                      <Mail size={20} className="text-brand-cyan" />
+                      <span>Kontakt</span>
+                    </a>
                   </li>
                 </ul>
               </nav>
