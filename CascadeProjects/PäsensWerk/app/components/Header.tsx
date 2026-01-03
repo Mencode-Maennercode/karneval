@@ -3,6 +3,7 @@
 import Image from 'next/image'
 import { useState, useEffect } from 'react'
 import { Menu, X } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 
 export default function Header() {
   const [isScrolled, setIsScrolled] = useState(false)
@@ -18,6 +19,18 @@ export default function Header() {
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  // Lock body scroll when mobile menu is open
+  useEffect(() => {
+    if (isMobileMenuOpen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [isMobileMenuOpen])
 
   // Calculate logo visibility in header
   const logoOpacity = scrollY > 350 ? Math.min(1, (scrollY - 350) * 0.02) : 0
@@ -102,54 +115,61 @@ export default function Header() {
         </div>
       </div>
 
-      {isMobileMenuOpen && (
-        <div className="md:hidden bg-white border-t">
-          <nav className="container mx-auto px-4 py-4 flex flex-col space-y-4">
-            <a
-              href="#home"
-              className="text-brand-navy hover:text-brand-cyan transition-colors font-medium"
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 0.4 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="md:hidden fixed inset-0 bg-black z-40"
               onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <motion.aside
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="md:hidden fixed top-0 right-0 h-dvh w-[300px] bg-white shadow-2xl z-50 border-l border-gray-200"
             >
-              Home
-            </a>
-            <a
-              href="#leistungen"
-              className="text-brand-navy hover:text-brand-cyan transition-colors font-medium"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Leistungen
-            </a>
-            <a
-              href="#arbeitsweise"
-              className="text-brand-navy hover:text-brand-cyan transition-colors font-medium"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Arbeitsweise
-            </a>
-            <a
-              href="#hinweise"
-              className="text-brand-navy hover:text-brand-cyan transition-colors font-medium"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Hinweise
-            </a>
-            <a
-              href="#kontakt"
-              className="text-brand-navy hover:text-brand-cyan transition-colors font-medium"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Kontakt
-            </a>
-            <a
-              href="#kontakt"
-              className="bg-brand-cyan text-white px-6 py-3 rounded-lg font-semibold text-center hover:bg-brand-navy transition-all"
-              onClick={() => setIsMobileMenuOpen(false)}
-            >
-              Jetzt starten
-            </a>
-          </nav>
-        </div>
-      )}
+              <div className="flex items-center justify-end h-16 px-5 border-b border-gray-200">
+                <button
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="text-gray-600 hover:text-brand-navy"
+                  aria-label="Menü schließen"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+              <nav className="px-5 py-4">
+                <ul className="space-y-1">
+                  <li>
+                    <a href="#home" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Home</a>
+                  </li>
+                  <li>
+                    <a href="#leistungen" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Leistungen</a>
+                  </li>
+                  <li>
+                    <a href="#arbeitsweise" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Arbeitsweise</a>
+                  </li>
+                  <li>
+                    <a href="#hinweise" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Hinweise</a>
+                  </li>
+                  <li>
+                    <a href="#kontakt" className="block rounded-md px-3 py-3 text-gray-800 hover:bg-gray-50" onClick={() => setIsMobileMenuOpen(false)}>Kontakt</a>
+                  </li>
+                </ul>
+              </nav>
+              <div className="mt-auto px-5 pb-6">
+                <a href="#kontakt" className="block w-full text-center rounded-lg bg-brand-cyan text-white font-semibold py-3 hover:bg-brand-navy transition-colors" onClick={() => setIsMobileMenuOpen(false)}>
+                  Jetzt starten
+                </a>
+              </div>
+            </motion.aside>
+          </>
+        )}
+      </AnimatePresence>
     </header>
   )
 }

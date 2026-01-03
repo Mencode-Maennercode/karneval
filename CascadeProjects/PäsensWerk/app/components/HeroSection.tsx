@@ -56,7 +56,7 @@ export default function HeroSection() {
             x: logoX
           }}
           transition={{ duration: 0.3, ease: 'easeOut' }}
-          className="relative w-full max-w-4xl"
+          className="relative w-full max-w-4xl hidden sm:block"
         >
           <Image
             src="/Gehirn_Transparent.png"
@@ -68,8 +68,26 @@ export default function HeroSection() {
         </motion.div>
       </div>
 
+      {/* Mobile Logo Overlay - Positioned over title */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none sm:hidden overflow-hidden">
+        <motion.div
+          initial={{ opacity: 0, scale: 1 }}
+          animate={{ opacity: 0.4, scale: 1 }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+          className="absolute top-1/3 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[280px] max-w-[80vw]"
+        >
+          <Image
+            src="/Gehirn_Transparent.png"
+            alt="PräsenzWert Logo Mobile"
+            width={800}
+            height={400}
+            className="w-full h-auto opacity-40"
+          />
+        </motion.div>
+      </div>
+
       {/* Content */}
-      <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-20">
+      <div className="relative z-10 container mx-auto px-4 sm:px-6 lg:px-8 py-12 sm:py-20">
         <div className="max-w-5xl mx-auto text-center">
           {/* Main Heading */}
           <motion.div
@@ -78,15 +96,17 @@ export default function HeroSection() {
             transition={{ duration: 0.8, delay: 0.3 }}
             className="mb-8"
           >
-            <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold text-white mb-6 leading-tight drop-shadow-2xl">
+            <h1 className="text-4xl sm:text-6xl lg:text-7xl font-bold text-white mb-4 sm:mb-6 leading-tight drop-shadow-2xl">
               Präsenz<span className="text-brand-cyan">W</span>ert
             </h1>
-            <p className="text-2xl sm:text-3xl text-white/90 font-semibold mb-4 drop-shadow-xl">
-              Innovation für Digitale Sichtbarkeit
-            </p>
-            <p className="text-xl sm:text-2xl text-gray-200 drop-shadow-lg">
-              Eine professionelle Online-Präsenz in der Region Rhein · Ahr · Eifel
-            </p>
+            <div className="hidden sm:block">
+              <p className="text-2xl sm:text-3xl text-white/90 font-semibold mb-4 drop-shadow-xl">
+                Innovation für Digitale Sichtbarkeit
+              </p>
+              <p className="text-xl sm:text-2xl text-gray-200 drop-shadow-lg">
+                Eine professionelle Online-Präsenz in der Region Rhein · Ahr · Eifel
+              </p>
+            </div>
           </motion.div>
 
           {/* Description */}
@@ -94,10 +114,11 @@ export default function HeroSection() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.6 }}
-            className="text-lg sm:text-xl text-gray-300 mb-12 max-w-3xl mx-auto leading-relaxed"
+            className="text-base sm:text-lg sm:text-xl text-gray-300 mb-8 sm:mb-12 max-w-3xl mx-auto leading-relaxed px-4 sm:px-0"
           >
-            Ich erstelle informative Unternehmenswebsites für kleine und mittelständische Organisationen. 
-            Klare Struktur, ansprechendes Design, faire Preise.
+            <span className="sm:hidden">Informative Unternehmenswebsites für kleine und mittelständische Organisationen.</span>
+            <span className="hidden sm:inline">Ich erstelle informative Unternehmenswebsites für kleine und mittelständische Organisationen. 
+            Klare Struktur, ansprechendes Design, faire Preise.</span>
           </motion.p>
 
           {/* CTA Button */}
@@ -105,11 +126,11 @@ export default function HeroSection() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.9 }}
-            className="mb-20"
+            className="mb-12 sm:mb-20"
           >
             <a
               href="#leistungen"
-              className="inline-flex items-center gap-2 bg-brand-cyan text-white px-10 py-5 rounded-lg font-semibold text-lg hover:bg-white hover:text-brand-navy transition-all duration-300 shadow-2xl hover:shadow-brand-cyan/50 hover:scale-105"
+              className="inline-flex items-center gap-2 bg-brand-cyan text-white px-6 sm:px-10 py-3 sm:py-5 rounded-lg font-semibold text-base sm:text-lg hover:bg-white hover:text-brand-navy transition-all duration-300 shadow-2xl hover:shadow-brand-cyan/50 hover:scale-105"
             >
               Mehr Erfahren
             </a>
@@ -127,7 +148,7 @@ export default function HeroSection() {
               transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
               className="inline-flex flex-col items-center gap-2 text-gray-300"
             >
-              <span className="text-sm">Nach unten scrollen</span>
+              <span className="hidden sm:inline text-sm">Nach unten scrollen</span>
               <ArrowDown size={24} className="text-brand-cyan" />
             </motion.div>
           </motion.div>

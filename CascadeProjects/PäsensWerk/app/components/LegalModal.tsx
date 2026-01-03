@@ -110,15 +110,15 @@ export default function LegalModal({ isOpen, onClose, type }: LegalModalProps) {
           Diese Website wird bei netcup gehostet. netcup ist ein deutscher Hosting-Anbieter mit Rechenzentren 
           in Deutschland und Österreich, die vollständig DSGVO-konform betrieben werden.
         </p>
-        <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
           <p className="text-gray-700 text-sm mb-2">
             <strong>Hosting-Details:</strong>
           </p>
-          <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-            <li>Anbieter: netcup GmbH</li>
-            <li>Serverstandort: Deutschland/Österreich (EU)</li>
-            <li>DSGVO-Konformität: Ja, vollständig konform</li>
-            <li>ISO 27001 Zertifizierung: Vorhanden</li>
+          <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 sm:space-y-1">
+            <li className="pl-1 sm:pl-0">Anbieter: netcup GmbH</li>
+            <li className="pl-1 sm:pl-0 whitespace-nowrap">Serverstandort: Deutschland/Österreich (EU)</li>
+            <li className="pl-1 sm:pl-0 whitespace-nowrap">DSGVO-Konformität: Ja, vollständig konform</li>
+            <li className="pl-1 sm:pl-0">ISO 27001 Zertifizierung: Vorhanden</li>
           </ul>
         </div>
         <p className="text-gray-700 text-sm leading-relaxed mt-3">
@@ -127,7 +127,7 @@ export default function LegalModal({ isOpen, onClose, type }: LegalModalProps) {
           verarbeitet werden.
         </p>
         <p className="text-gray-700 text-sm leading-relaxed mt-3">
-          <strong>Hinweis zu Auftragsverarbeitungsverträgen:</strong> Da auf dieser Website aktuell keine 
+          <strong>Hinweis zu Auftragsverarbeitungsverträgen:</strong><br className="block sm:hidden" /> <span className="inline whitespace-nowrap sm:whitespace-normal">Da&nbsp;auf&nbsp;dieser&nbsp;Website</span> aktuell keine 
           personenbezogenen Daten serverseitig gespeichert werden (das Kontaktformular leitet Daten nur an mich weiter), 
           ist aktuell kein Auftragsverarbeitungsvertrag mit netcup erforderlich. Sollte sich dies in Zukunft ändern, 
           werde ich entsprechende Verträge abschließen.
@@ -141,16 +141,16 @@ export default function LegalModal({ isOpen, onClose, type }: LegalModalProps) {
           ausschließlich zur Bearbeitung Ihrer Anfrage verwendet. Ich speichere diese Daten nur solange, wie es 
           für die Bearbeitung Ihrer Anfrage erforderlich ist.
         </p>
-        <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
           <p className="text-gray-700 text-sm mb-2">
             <strong>Im Kontaktformular erfasste Daten:</strong>
           </p>
-          <ul className="list-disc list-inside text-sm text-gray-700 space-y-1">
-            <li>Name (Pflichtfeld)</li>
-            <li>E-Mail-Adresse (Pflichtfeld)</li>
-            <li>Unternehmensname (optional)</li>
-            <li>Telefonnummer (optional)</li>
-            <li>Nachricht (Pflichtfeld)</li>
+          <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 sm:space-y-1">
+            <li className="pl-1 sm:pl-0">Name (Pflichtfeld)</li>
+            <li className="pl-1 sm:pl-0">E-Mail-Adresse (Pflichtfeld)</li>
+            <li className="pl-1 sm:pl-0">Unternehmensname (optional)</li>
+            <li className="pl-1 sm:pl-0">Telefonnummer (optional)</li>
+            <li className="pl-1 sm:pl-0">Nachricht (Pflichtfeld)</li>
           </ul>
         </div>
         <p className="text-gray-700 text-sm leading-relaxed mt-3">
@@ -175,7 +175,7 @@ export default function LegalModal({ isOpen, onClose, type }: LegalModalProps) {
           Die Nutzung erfolgt auf Grundlage meines berechtigten Interesses an einer ansprechenden Darstellung 
           meiner Website.
         </p>
-        <div className="bg-gray-50 p-4 rounded-lg">
+        <div className="bg-gray-50 p-3 sm:p-4 rounded-lg">
           <p className="text-gray-700 text-sm">
             <strong>Lizenzhinweis:</strong> Alle verwendeten Bilder von Unsplash stehen unter der Unsplash-Lizenz und 
             können kostenlos verwendet werden.

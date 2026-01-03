@@ -26,7 +26,7 @@ export default function Footer() {
                 height={60}
                 className="h-56 w-auto brightness-0 invert block object-contain -ml-14"
               />
-              <p className="text-gray-400 leading-relaxed absolute bottom-14 left-0 right-0 bg-brand-navy/80 p-2">
+              <p className="text-gray-400 leading-relaxed absolute bottom-[-8px] sm:bottom-14 left-0 right-0 bg-brand-navy/80 p-2">
                 Unternehmenswebsites für kleine und mittelständische Betriebe & Organisationen in der Region Rhein · Ahr · Eifel.
               </p>
             </div>
@@ -85,7 +85,7 @@ export default function Footer() {
             </div>
           </div>
 
-          <div className="border-t border-gray-700 pt-8 text-center text-gray-400">
+          <div className="border-t border-gray-700 pt-8 pb-[60px] sm:pt-8 sm:pb-8 text-center text-gray-400">
             <p>&copy; {new Date().getFullYear()} PräsenzWert. Alle Rechte vorbehalten.</p>
           </div>
         </div>
