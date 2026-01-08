@@ -47,6 +47,8 @@ export default function WaiterPage() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [vibrationEnabled, setVibrationEnabled] = useState(false);
   const [showVibrationBanner, setShowVibrationBanner] = useState(true);
+  const [showSettingsGuide, setShowSettingsGuide] = useState(false);
+  const [settingsCheckDone, setSettingsCheckDone] = useState(false);
 
   // Force re-render every 10 seconds to update alert phases
   useEffect(() => {
@@ -76,8 +78,15 @@ export default function WaiterPage() {
 
     // Check if vibration was already enabled
     const vibEnabled = localStorage.getItem('vibrationEnabled') === 'true';
+    const settingsChecked = localStorage.getItem('settingsCheckDone') === 'true';
     setVibrationEnabled(vibEnabled);
     setShowVibrationBanner(!vibEnabled);
+    setSettingsCheckDone(settingsChecked);
+    
+    // Check notification settings on startup
+    if (!settingsChecked) {
+      checkNotificationSettings();
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -125,26 +134,20 @@ export default function WaiterPage() {
         
         // Vibrate strongly and notify if new orders came in
         if (myOrders.length > lastOrderCount && lastOrderCount > 0) {
+          const newOrder = myOrders[0];
+          
           // Strong, long vibration pattern
           if (navigator.vibrate) {
             navigator.vibrate([500, 200, 500, 200, 500, 200, 500, 200, 500]);
           }
           
-          // Show notification (works even when app is in background)
-          if ('Notification' in window && Notification.permission === 'granted') {
-            const newOrder = myOrders[0];
-            const title = newOrder.type === 'waiter_call' 
-              ? `🙋 Tisch ${newOrder.tableNumber} ruft!`
-              : `🍺 Neue Bestellung Tisch ${newOrder.tableNumber}`;
-            const body = newOrder.type === 'waiter_call'
-              ? 'Kellner wird gerufen'
-              : `${newOrder.total?.toFixed(2)} € - Tippe zum Öffnen`;
-            
-            new Notification(title, {
-              body,
-              icon: '/icons/icon.svg',
-              tag: 'new-order-' + newOrder.id,
-              requireInteraction: true,
+          // Send notification via Service Worker (works on locked screen!)
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller && Notification.permission === 'granted') {
+            navigator.serviceWorker.controller.postMessage({
+              type: 'NEW_ORDER',
+              tableNumber: newOrder.tableNumber,
+              orderType: newOrder.type,
+              total: newOrder.total?.toFixed(2) || '0.00'
             });
           }
           
@@ -223,6 +226,27 @@ export default function WaiterPage() {
     setInstallPrompt(null);
   };
 
+  const checkNotificationSettings = async () => {
+    if (!('Notification' in window)) {
+      return;
+    }
+    
+    const permission = Notification.permission;
+    
+    if (permission === 'default') {
+      // Not yet asked - show guide
+      setShowSettingsGuide(true);
+    } else if (permission === 'denied') {
+      // Denied - show guide to enable in system settings
+      setShowSettingsGuide(true);
+    } else if (permission === 'granted') {
+      // Already granted - mark as done
+      setNotificationsEnabled(true);
+      localStorage.setItem('settingsCheckDone', 'true');
+      setSettingsCheckDone(true);
+    }
+  };
+
   const handleEnableNotifications = async () => {
     if (!('Notification' in window)) {
       alert('Dein Browser unterstützt keine Benachrichtigungen');
@@ -233,13 +257,23 @@ export default function WaiterPage() {
     setNotificationsEnabled(permission === 'granted');
     
     if (permission === 'granted') {
-      // Show test notification
-      new Notification('🍺 Kellner-App aktiviert!', {
-        body: 'Du erhältst jetzt Benachrichtigungen bei neuen Bestellungen',
-        icon: '/icons/icon.svg',
-      });
+      // Send test notification via Service Worker
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({
+          type: 'NEW_ORDER',
+          tableNumber: 'Test',
+          orderType: 'order',
+          total: '0.00'
+        });
+      }
       // Also activate vibration
       triggerVibration();
+      localStorage.setItem('settingsCheckDone', 'true');
+      setSettingsCheckDone(true);
+      setShowSettingsGuide(false);
+    } else {
+      // Show guide if denied
+      setShowSettingsGuide(true);
     }
   };
 
@@ -428,8 +462,68 @@ export default function WaiterPage() {
   // Main Waiter View
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Settings Guide Modal */}
+      {showSettingsGuide && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <div className="text-6xl mb-4 text-center">⚙️</div>
+            <h2 className="text-2xl font-bold mb-4 text-center">Benachrichtigungen einrichten</h2>
+            
+            <div className="space-y-4 text-left mb-6">
+              <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4">
+                <p className="font-bold text-yellow-800 mb-2">🔔 WICHTIG für gesperrten Bildschirm!</p>
+                <p className="text-sm text-yellow-700">
+                  Damit dein Handy bei gesperrtem Bildschirm vibriert, musst du die Benachrichtigungen aktivieren.
+                </p>
+              </div>
+
+              <div className="bg-blue-50 border-2 border-blue-400 rounded-xl p-4">
+                <p className="font-bold text-blue-800 mb-2">📱 Android:</p>
+                <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
+                  <li>Tippe unten auf "Erlauben"</li>
+                  <li>Falls blockiert: Einstellungen → Apps → Kellner</li>
+                  <li>Benachrichtigungen aktivieren</li>
+                  <li>Auf Sperrbildschirm anzeigen: AN</li>
+                  <li>Ton & Vibration: AN</li>
+                </ol>
+              </div>
+
+              <div className="bg-purple-50 border-2 border-purple-400 rounded-xl p-4">
+                <p className="font-bold text-purple-800 mb-2">🍎 iPhone:</p>
+                <ol className="text-sm text-purple-700 space-y-1 list-decimal list-inside">
+                  <li>Tippe unten auf "Erlauben"</li>
+                  <li>Falls blockiert: Einstellungen → Mitteilungen</li>
+                  <li>Kellner-App suchen</li>
+                  <li>Mitteilungen erlauben: AN</li>
+                  <li>Töne: AN (Vibration automatisch dabei)</li>
+                  <li>Im Sperrbildschirm: AN</li>
+                </ol>
+              </div>
+            </div>
+
+            <button
+              onClick={handleEnableNotifications}
+              className="w-full py-4 bg-green-600 text-white rounded-xl text-xl font-bold mb-3"
+            >
+              ✅ BENACHRICHTIGUNGEN ERLAUBEN
+            </button>
+            
+            <button
+              onClick={() => {
+                setShowSettingsGuide(false);
+                localStorage.setItem('settingsCheckDone', 'true');
+                setSettingsCheckDone(true);
+              }}
+              className="w-full py-2 text-gray-600 text-sm"
+            >
+              Später einrichten
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Vibration Activation Banner - MUST tap to enable */}
-      {showVibrationBanner && (
+      {showVibrationBanner && !showSettingsGuide && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center">
             <div className="text-6xl mb-4">📳</div>

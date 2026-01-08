@@ -69,6 +69,39 @@ self.addEventListener('notificationclick', (event) => {
   }
 });
 
+// Listen for messages from the app to trigger notifications
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'NEW_ORDER') {
+    const { tableNumber, orderType, total } = event.data;
+    
+    const title = orderType === 'waiter_call' 
+      ? `🙋 Tisch ${tableNumber} ruft!`
+      : `🍺 Neue Bestellung Tisch ${tableNumber}`;
+    
+    const body = orderType === 'waiter_call'
+      ? 'Kellner wird gerufen - Tippe zum Öffnen'
+      : `${total} € - Tippe zum Öffnen`;
+    
+    const options = {
+      body,
+      icon: '/icons/icon.svg',
+      badge: '/icons/icon.svg',
+      vibrate: [500, 200, 500, 200, 500, 200, 500, 200, 500, 200, 500],
+      tag: 'order-' + Date.now(),
+      requireInteraction: true,
+      silent: false,
+      actions: [
+        { action: 'open', title: 'Öffnen' },
+        { action: 'dismiss', title: 'Später' }
+      ]
+    };
+    
+    event.waitUntil(
+      self.registration.showNotification(title, options)
+    );
+  }
+});
+
 // Background sync for when online again
 self.addEventListener('sync', (event) => {
   if (event.tag === 'sync-orders') {
