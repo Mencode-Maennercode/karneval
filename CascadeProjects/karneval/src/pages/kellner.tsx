@@ -101,13 +101,17 @@ export default function WaiterPage() {
     if (!isSetup) return;
 
     const ordersRef = ref(database, 'orders');
+    console.log('Kellner: Setting up Firebase listener, assigned tables:', assignedTables);
+    
     const unsubscribe = onValue(ordersRef, (snapshot) => {
+      console.log('Kellner: Firebase update received', snapshot.exists());
       const data = snapshot.val();
       if (data) {
         const orderList: Order[] = Object.entries(data).map(([id, order]: [string, any]) => ({
           id,
           ...order,
         }));
+        console.log('Kellner: Total orders in DB:', orderList.length);
         
         // Filter by assigned tables and not expired
         const myOrders = orderList
@@ -116,6 +120,8 @@ export default function WaiterPage() {
             getAlertPhase(order.timestamp) !== 'expired'
           )
           .sort((a, b) => b.timestamp - a.timestamp);
+        
+        console.log('Kellner: My filtered orders:', myOrders.length);
         
         // Vibrate strongly and notify if new orders came in
         if (myOrders.length > lastOrderCount && lastOrderCount > 0) {
@@ -152,11 +158,18 @@ export default function WaiterPage() {
         setLastOrderCount(myOrders.length);
         setOrders(myOrders);
       } else {
+        console.log('Kellner: No orders in database');
         setOrders([]);
         setLastOrderCount(0);
       }
+    }, (error) => {
+      console.error('Kellner: Firebase listener error:', error);
     });
-    return () => unsubscribe();
+    
+    return () => {
+      console.log('Kellner: Cleaning up Firebase listener');
+      unsubscribe();
+    };
   }, [isSetup, assignedTables, lastOrderCount]);
 
   const handleSetup = () => {
