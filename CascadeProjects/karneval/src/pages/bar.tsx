@@ -40,9 +40,11 @@ function getAlertClass(phase: AlertPhase): string {
 export default function BarDashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showWaiterQR, setShowWaiterQR] = useState(false);
   const [waiterQRCode, setWaiterQRCode] = useState('');
   const [pin, setPin] = useState('');
+  const [unlockPin, setUnlockPin] = useState('');
   const [isShutdown, setIsShutdown] = useState(false);
   const [, setTick] = useState(0);
 
@@ -96,9 +98,8 @@ export default function BarDashboard() {
 
   const handleEmergencyToggle = async () => {
     if (isShutdown) {
-      // Deactivate shutdown
-      await set(ref(database, 'system/shutdown'), false);
-      setShowEmergencyModal(false);
+      // Show unlock modal to reactivate
+      setShowUnlockModal(true);
     } else {
       setShowEmergencyModal(true);
     }
@@ -109,6 +110,16 @@ export default function BarDashboard() {
       await set(ref(database, 'system/shutdown'), true);
       setShowEmergencyModal(false);
       setPin('');
+    } else {
+      alert('Falscher PIN!');
+    }
+  };
+
+  const handleUnlockConfirm = async () => {
+    if (unlockPin === '1234') {
+      await set(ref(database, 'system/shutdown'), false);
+      setShowUnlockModal(false);
+      setUnlockPin('');
     } else {
       alert('Falscher PIN!');
     }
@@ -169,6 +180,46 @@ export default function BarDashboard() {
           </div>
         </div>
       </div>
+
+      {/* Unlock Modal */}
+      {showUnlockModal && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-gray-900">
+            <h2 className="text-3xl font-bold mb-4 text-center">🔓 System aktivieren</h2>
+            <p className="text-gray-600 mb-6 text-center">
+              Gib den PIN ein um das System wieder zu aktivieren
+            </p>
+            <input
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={unlockPin}
+              onChange={(e) => setUnlockPin(e.target.value)}
+              placeholder="PIN eingeben"
+              className="w-full p-4 text-2xl text-center border-2 border-gray-300 rounded-xl mb-4 font-mono"
+              maxLength={4}
+              onKeyDown={(e) => e.key === 'Enter' && handleUnlockConfirm()}
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowUnlockModal(false);
+                  setUnlockPin('');
+                }}
+                className="flex-1 px-6 py-4 bg-gray-300 text-gray-700 rounded-xl font-bold text-xl"
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={handleUnlockConfirm}
+                className="flex-1 px-6 py-4 bg-green-600 text-white rounded-xl font-bold text-xl"
+              >
+                ✅ Aktivieren
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Shutdown Banner */}
       {isShutdown && (
