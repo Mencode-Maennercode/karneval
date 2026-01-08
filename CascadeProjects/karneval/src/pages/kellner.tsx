@@ -42,11 +42,39 @@ export default function WaiterPage() {
   const [tableInput, setTableInput] = useState('');
   const [, setTick] = useState(0);
   const [lastOrderCount, setLastOrderCount] = useState(0);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   // Force re-render every 10 seconds to update alert phases
   useEffect(() => {
     const interval = setInterval(() => setTick(t => t + 1), 10000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Check if app is installed and handle install prompt
+  useEffect(() => {
+    // Check if already installed
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setIsInstalled(true);
+    }
+
+    // Listen for install prompt
+    const handleBeforeInstall = (e: any) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    
+    // Check notification permission
+    if ('Notification' in window) {
+      setNotificationsEnabled(Notification.permission === 'granted');
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
   }, []);
 
   // Load saved waiter data from localStorage
@@ -82,11 +110,37 @@ export default function WaiterPage() {
           )
           .sort((a, b) => b.timestamp - a.timestamp);
         
-        // Vibrate if new orders came in
+        // Vibrate strongly and notify if new orders came in
         if (myOrders.length > lastOrderCount && lastOrderCount > 0) {
+          // Strong, long vibration pattern
           if (navigator.vibrate) {
-            navigator.vibrate([200, 100, 200, 100, 200]);
+            navigator.vibrate([500, 200, 500, 200, 500, 200, 500, 200, 500]);
           }
+          
+          // Show notification (works even when app is in background)
+          if ('Notification' in window && Notification.permission === 'granted') {
+            const newOrder = myOrders[0];
+            const title = newOrder.type === 'waiter_call' 
+              ? `🙋 Tisch ${newOrder.tableNumber} ruft!`
+              : `🍺 Neue Bestellung Tisch ${newOrder.tableNumber}`;
+            const body = newOrder.type === 'waiter_call'
+              ? 'Kellner wird gerufen'
+              : `${newOrder.total?.toFixed(2)} € - Tippe zum Öffnen`;
+            
+            new Notification(title, {
+              body,
+              icon: '/icons/icon.svg',
+              tag: 'new-order-' + newOrder.id,
+              requireInteraction: true,
+            });
+          }
+          
+          // Also play a sound if possible
+          try {
+            const audio = new Audio('/notification.mp3');
+            audio.volume = 1.0;
+            audio.play().catch(() => {});
+          } catch (e) {}
         }
         setLastOrderCount(myOrders.length);
         setOrders(myOrders);
@@ -135,6 +189,40 @@ export default function WaiterPage() {
     setWaiterName('');
     setAssignedTables([]);
     setIsSetup(false);
+  };
+
+  const handleInstall = async () => {
+    if (!installPrompt) return;
+    
+    installPrompt.prompt();
+    const result = await installPrompt.userChoice;
+    
+    if (result.outcome === 'accepted') {
+      setIsInstalled(true);
+    }
+    setInstallPrompt(null);
+  };
+
+  const handleEnableNotifications = async () => {
+    if (!('Notification' in window)) {
+      alert('Dein Browser unterstützt keine Benachrichtigungen');
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+    setNotificationsEnabled(permission === 'granted');
+    
+    if (permission === 'granted') {
+      // Show test notification
+      new Notification('🍺 Kellner-App aktiviert!', {
+        body: 'Du erhältst jetzt Benachrichtigungen bei neuen Bestellungen',
+        icon: '/icons/icon.svg',
+      });
+      // Vibrate separately
+      if (navigator.vibrate) {
+        navigator.vibrate([200, 100, 200]);
+      }
+    }
   };
 
   const formatTime = (timestamp: number) => {
@@ -241,6 +329,45 @@ export default function WaiterPage() {
             >
               Starten
             </button>
+
+            {/* Install App Section */}
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <h3 className="font-bold text-gray-700 mb-3">📱 App installieren</h3>
+              
+              {isInstalled ? (
+                <div className="text-green-600 font-medium flex items-center gap-2">
+                  <span>✅</span> App ist installiert!
+                </div>
+              ) : installPrompt ? (
+                <button
+                  onClick={handleInstall}
+                  className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold"
+                >
+                  📲 App installieren
+                </button>
+              ) : (
+                <div className="text-sm text-gray-500">
+                  <p className="mb-2"><strong>Android:</strong> Tippe auf ⋮ → "Zum Startbildschirm hinzufügen"</p>
+                  <p><strong>iPhone:</strong> Tippe auf Teilen → "Zum Home-Bildschirm"</p>
+                </div>
+              )}
+
+              {/* Notification Permission */}
+              <div className="mt-4">
+                {notificationsEnabled ? (
+                  <div className="text-green-600 font-medium flex items-center gap-2">
+                    <span>🔔</span> Benachrichtigungen aktiviert!
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleEnableNotifications}
+                    className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold"
+                  >
+                    🔔 Benachrichtigungen aktivieren
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       </div>
