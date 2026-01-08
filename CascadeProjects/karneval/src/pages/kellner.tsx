@@ -45,6 +45,8 @@ export default function WaiterPage() {
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [vibrationEnabled, setVibrationEnabled] = useState(false);
+  const [showVibrationBanner, setShowVibrationBanner] = useState(true);
 
   // Force re-render every 10 seconds to update alert phases
   useEffect(() => {
@@ -71,6 +73,11 @@ export default function WaiterPage() {
     if ('Notification' in window) {
       setNotificationsEnabled(Notification.permission === 'granted');
     }
+
+    // Check if vibration was already enabled
+    const vibEnabled = localStorage.getItem('vibrationEnabled') === 'true';
+    setVibrationEnabled(vibEnabled);
+    setShowVibrationBanner(!vibEnabled);
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -218,11 +225,42 @@ export default function WaiterPage() {
         body: 'Du erhältst jetzt Benachrichtigungen bei neuen Bestellungen',
         icon: '/icons/icon.svg',
       });
-      // Vibrate separately
-      if (navigator.vibrate) {
-        navigator.vibrate([200, 100, 200]);
-      }
+      // Also activate vibration
+      triggerVibration();
     }
+  };
+
+  // Vibration function that works reliably
+  const triggerVibration = () => {
+    try {
+      // Try multiple vibration patterns to ensure it works
+      if ('vibrate' in navigator) {
+        // Strong vibration pattern: 500ms on, 200ms off, repeated
+        const pattern = [500, 200, 500, 200, 500, 200, 500, 200, 500];
+        navigator.vibrate(pattern);
+        return true;
+      }
+    } catch (e) {
+      console.log('Vibration failed:', e);
+    }
+    return false;
+  };
+
+  const handleActivateVibration = () => {
+    // This function MUST be called from a user gesture (tap/click)
+    const success = triggerVibration();
+    if (success) {
+      setVibrationEnabled(true);
+      setShowVibrationBanner(false);
+      localStorage.setItem('vibrationEnabled', 'true');
+      alert('✅ Vibration aktiviert! Dein Handy vibriert jetzt bei neuen Bestellungen.');
+    } else {
+      alert('⚠️ Vibration wird von deinem Gerät nicht unterstützt.');
+    }
+  };
+
+  const handleTestVibration = () => {
+    triggerVibration();
   };
 
   const formatTime = (timestamp: number) => {
@@ -377,6 +415,32 @@ export default function WaiterPage() {
   // Main Waiter View
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Vibration Activation Banner - MUST tap to enable */}
+      {showVibrationBanner && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center">
+            <div className="text-6xl mb-4">📳</div>
+            <h2 className="text-2xl font-bold mb-2">Vibration aktivieren</h2>
+            <p className="text-gray-600 mb-6">
+              Tippe auf den Button um Vibration zu aktivieren. 
+              Dein Handy vibriert dann bei neuen Bestellungen!
+            </p>
+            <button
+              onClick={handleActivateVibration}
+              className="w-full py-4 bg-red-600 text-white rounded-xl text-xl font-bold animate-pulse"
+            >
+              📳 JETZT AKTIVIEREN
+            </button>
+            <button
+              onClick={() => setShowVibrationBanner(false)}
+              className="mt-3 text-gray-500 text-sm"
+            >
+              Später
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-evm-green text-white p-4 sticky top-0 z-10 shadow-lg">
         <div className="flex justify-between items-center">
@@ -386,12 +450,20 @@ export default function WaiterPage() {
               Tische: {assignedTables.join(', ')}
             </p>
           </div>
-          <button
-            onClick={handleReset}
-            className="px-4 py-2 bg-white/20 rounded-lg text-sm"
-          >
-            Ändern
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handleTestVibration}
+              className="px-3 py-2 bg-white/20 rounded-lg text-sm"
+            >
+              📳 Test
+            </button>
+            <button
+              onClick={handleReset}
+              className="px-3 py-2 bg-white/20 rounded-lg text-sm"
+            >
+              Ändern
+            </button>
+          </div>
         </div>
       </div>
 
@@ -402,6 +474,23 @@ export default function WaiterPage() {
             <p className="text-4xl mb-4">✨</p>
             <p className="text-xl text-gray-500">Keine Bestellungen</p>
             <p className="text-gray-400 mt-2">Dein Handy vibriert bei neuen Bestellungen</p>
+            
+            {/* Test Vibration Button */}
+            <button
+              onClick={handleTestVibration}
+              className="mt-6 px-6 py-3 bg-evm-green text-white rounded-xl font-bold"
+            >
+              📳 Vibration testen
+            </button>
+            
+            {!vibrationEnabled && (
+              <button
+                onClick={handleActivateVibration}
+                className="mt-3 px-6 py-3 bg-red-600 text-white rounded-xl font-bold block mx-auto"
+              >
+                ⚠️ Vibration aktivieren
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-4">
