@@ -54,7 +54,10 @@ export default function BarDashboard() {
 
   useEffect(() => {
     const ordersRef = ref(database, 'orders');
+    console.log('Bar: Setting up Firebase listener for orders');
+    
     const unsubscribe = onValue(ordersRef, (snapshot) => {
+      console.log('Bar: Firebase update received', snapshot.exists());
       const data = snapshot.val();
       if (data) {
         const orderList: Order[] = Object.entries(data).map(([id, order]: [string, any]) => ({
@@ -63,12 +66,20 @@ export default function BarDashboard() {
         }));
         // Sort by timestamp descending (newest first)
         orderList.sort((a, b) => b.timestamp - a.timestamp);
+        console.log('Bar: Updated orders count:', orderList.length);
         setOrders(orderList);
       } else {
+        console.log('Bar: No orders in database');
         setOrders([]);
       }
+    }, (error) => {
+      console.error('Bar: Firebase listener error:', error);
     });
-    return () => unsubscribe();
+    
+    return () => {
+      console.log('Bar: Cleaning up Firebase listener');
+      unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
