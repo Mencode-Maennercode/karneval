@@ -1,6 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
-import { database, ref, onValue, remove, set, get } from '@/lib/firebase';
-import { getTableNumber, getAllTableCodes } from '@/lib/tables';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { database, ref, onValue, remove } from '@/lib/firebase';
 
 interface Order {
   id: string;
@@ -18,7 +17,6 @@ type AlertPhase = 'red' | 'orange' | 'green' | 'expired';
 function getAlertPhase(timestamp: number): AlertPhase {
   const elapsed = Date.now() - timestamp;
   const minutes = elapsed / 60000;
-  
   if (minutes < 1) return 'red';
   if (minutes < 3) return 'orange';
   if (minutes < 5) return 'green';
@@ -34,6 +32,93 @@ function getAlertBgColor(phase: AlertPhase): string {
   }
 }
 
+// ============ AUDIO ALARM SYSTEM ============
+// Creates a LOUD alarm using Web Audio API - works on ALL devices!
+class AlarmSystem {
+  private audioContext: AudioContext | null = null;
+  private isPlaying = false;
+  private oscillator: OscillatorNode | null = null;
+  private gainNode: GainNode | null = null;
+  private intervalId: NodeJS.Timeout | null = null;
+
+  // Initialize audio context (must be called from user gesture)
+  init() {
+    if (!this.audioContext) {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    return this.audioContext.state === 'running';
+  }
+
+  // Play a beep sound
+  private playBeep(frequency: number, duration: number) {
+    if (!this.audioContext) return;
+    
+    const osc = this.audioContext.createOscillator();
+    const gain = this.audioContext.createGain();
+    
+    osc.connect(gain);
+    gain.connect(this.audioContext.destination);
+    
+    osc.frequency.value = frequency;
+    osc.type = 'square'; // Loud, harsh sound
+    
+    gain.gain.setValueAtTime(0.5, this.audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + duration);
+    
+    osc.start(this.audioContext.currentTime);
+    osc.stop(this.audioContext.currentTime + duration);
+  }
+
+  // Start the alarm - plays repeatedly until stopped
+  startAlarm() {
+    if (this.isPlaying) return;
+    this.isPlaying = true;
+
+    // Play alarm pattern immediately and every 2 seconds
+    const playPattern = () => {
+      if (!this.isPlaying) return;
+      
+      // Alarm pattern: high-low-high-low beeps
+      this.playBeep(880, 0.2);  // A5
+      setTimeout(() => this.playBeep(660, 0.2), 250);  // E5
+      setTimeout(() => this.playBeep(880, 0.2), 500);  // A5
+      setTimeout(() => this.playBeep(660, 0.2), 750);  // E5
+      
+      // Also trigger vibration
+      if (navigator.vibrate) {
+        navigator.vibrate([300, 100, 300, 100, 300, 100, 300]);
+      }
+    };
+
+    playPattern();
+    this.intervalId = setInterval(playPattern, 2000);
+  }
+
+  // Stop the alarm
+  stopAlarm() {
+    this.isPlaying = false;
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (navigator.vibrate) {
+      navigator.vibrate(0); // Stop vibration
+    }
+  }
+
+  // Test alarm (single beep)
+  testAlarm() {
+    this.init();
+    this.playBeep(880, 0.3);
+    if (navigator.vibrate) {
+      navigator.vibrate([200, 100, 200]);
+    }
+  }
+}
+
+// Global alarm instance
+const alarm = typeof window !== 'undefined' ? new AlarmSystem() : null;
+
 export default function WaiterPage() {
   const [waiterName, setWaiterName] = useState('');
   const [assignedTables, setAssignedTables] = useState<number[]>([]);
@@ -42,13 +127,13 @@ export default function WaiterPage() {
   const [tableInput, setTableInput] = useState('');
   const [, setTick] = useState(0);
   const [lastOrderCount, setLastOrderCount] = useState(0);
-  const [installPrompt, setInstallPrompt] = useState<any>(null);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [vibrationEnabled, setVibrationEnabled] = useState(false);
-  const [showVibrationBanner, setShowVibrationBanner] = useState(true);
-  const [showSettingsGuide, setShowSettingsGuide] = useState(false);
-  const [settingsCheckDone, setSettingsCheckDone] = useState(false);
+  
+  // NEW: Alarm state
+  const [alarmActive, setAlarmActive] = useState(false);
+  const [newOrderAlert, setNewOrderAlert] = useState<Order | null>(null);
+  const [alarmEnabled, setAlarmEnabled] = useState(false);
+  const [showActivation, setShowActivation] = useState(true);
+  const [wakeLock, setWakeLock] = useState<any>(null);
 
   // Force re-render every 10 seconds to update alert phases
   useEffect(() => {
@@ -56,42 +141,45 @@ export default function WaiterPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Check if app is installed and handle install prompt
+  // Check saved settings on mount
   useEffect(() => {
-    // Check if already installed
-    if (window.matchMedia('(display-mode: standalone)').matches) {
-      setIsInstalled(true);
-    }
-
-    // Listen for install prompt
-    const handleBeforeInstall = (e: any) => {
-      e.preventDefault();
-      setInstallPrompt(e);
-    };
-
-    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
-    
-    // Check notification permission
-    if ('Notification' in window) {
-      setNotificationsEnabled(Notification.permission === 'granted');
-    }
-
-    // Check if vibration was already enabled
-    const vibEnabled = localStorage.getItem('vibrationEnabled') === 'true';
-    const settingsChecked = localStorage.getItem('settingsCheckDone') === 'true';
-    setVibrationEnabled(vibEnabled);
-    setShowVibrationBanner(!vibEnabled);
-    setSettingsCheckDone(settingsChecked);
-    
-    // Check notification settings on startup
-    if (!settingsChecked) {
-      checkNotificationSettings();
-    }
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
-    };
+    const enabled = localStorage.getItem('alarmEnabled') === 'true';
+    setAlarmEnabled(enabled);
+    setShowActivation(!enabled);
   }, []);
+
+  // Request Wake Lock to keep screen active
+  useEffect(() => {
+    const requestWakeLock = async () => {
+      if ('wakeLock' in navigator && isSetup && alarmEnabled) {
+        try {
+          const lock = await (navigator as any).wakeLock.request('screen');
+          setWakeLock(lock);
+          console.log('Wake Lock activated - screen will stay on');
+        } catch (err) {
+          console.log('Wake Lock failed:', err);
+        }
+      }
+    };
+    
+    requestWakeLock();
+    
+    // Re-acquire wake lock when page becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isSetup && alarmEnabled) {
+        requestWakeLock();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (wakeLock) {
+        wakeLock.release();
+      }
+    };
+  }, [isSetup, alarmEnabled]);
 
   // Load saved waiter data from localStorage
   useEffect(() => {
@@ -105,22 +193,19 @@ export default function WaiterPage() {
     }
   }, []);
 
-  // Subscribe to orders
+  // Subscribe to orders - trigger alarm on new orders
   useEffect(() => {
     if (!isSetup) return;
 
     const ordersRef = ref(database, 'orders');
-    console.log('Kellner: Setting up Firebase listener, assigned tables:', assignedTables);
     
     const unsubscribe = onValue(ordersRef, (snapshot) => {
-      console.log('Kellner: Firebase update received', snapshot.exists());
       const data = snapshot.val();
       if (data) {
         const orderList: Order[] = Object.entries(data).map(([id, order]: [string, any]) => ({
           id,
           ...order,
         }));
-        console.log('Kellner: Total orders in DB:', orderList.length);
         
         // Filter by assigned tables and not expired
         const myOrders = orderList
@@ -130,50 +215,28 @@ export default function WaiterPage() {
           )
           .sort((a, b) => b.timestamp - a.timestamp);
         
-        console.log('Kellner: My filtered orders:', myOrders.length);
-        
-        // Vibrate strongly and notify if new orders came in
-        if (myOrders.length > lastOrderCount && lastOrderCount > 0) {
+        // NEW ORDER DETECTED - TRIGGER ALARM!
+        if (myOrders.length > lastOrderCount && lastOrderCount >= 0 && alarmEnabled) {
           const newOrder = myOrders[0];
+          setNewOrderAlert(newOrder);
+          setAlarmActive(true);
           
-          // Strong, long vibration pattern
-          if (navigator.vibrate) {
-            navigator.vibrate([500, 200, 500, 200, 500, 200, 500, 200, 500]);
+          // Start the loud alarm!
+          if (alarm) {
+            alarm.startAlarm();
           }
-          
-          // Send notification via Service Worker (works on locked screen!)
-          if ('serviceWorker' in navigator && navigator.serviceWorker.controller && Notification.permission === 'granted') {
-            navigator.serviceWorker.controller.postMessage({
-              type: 'NEW_ORDER',
-              tableNumber: newOrder.tableNumber,
-              orderType: newOrder.type,
-              total: newOrder.total?.toFixed(2) || '0.00'
-            });
-          }
-          
-          // Also play a sound if possible
-          try {
-            const audio = new Audio('/notification.mp3');
-            audio.volume = 1.0;
-            audio.play().catch(() => {});
-          } catch (e) {}
         }
+        
         setLastOrderCount(myOrders.length);
         setOrders(myOrders);
       } else {
-        console.log('Kellner: No orders in database');
         setOrders([]);
         setLastOrderCount(0);
       }
-    }, (error) => {
-      console.error('Kellner: Firebase listener error:', error);
     });
     
-    return () => {
-      console.log('Kellner: Cleaning up Firebase listener');
-      unsubscribe();
-    };
-  }, [isSetup, assignedTables, lastOrderCount]);
+    return () => unsubscribe();
+  }, [isSetup, assignedTables, lastOrderCount, alarmEnabled]);
 
   const handleSetup = () => {
     if (!waiterName.trim()) {
@@ -214,100 +277,32 @@ export default function WaiterPage() {
     setIsSetup(false);
   };
 
-  const handleInstall = async () => {
-    if (!installPrompt) return;
-    
-    installPrompt.prompt();
-    const result = await installPrompt.userChoice;
-    
-    if (result.outcome === 'accepted') {
-      setIsInstalled(true);
+  // ACTIVATE ALARM SYSTEM - must be called from user tap!
+  const handleActivateAlarm = () => {
+    if (alarm) {
+      alarm.init();
+      alarm.testAlarm(); // Play test sound to confirm it works
     }
-    setInstallPrompt(null);
+    setAlarmEnabled(true);
+    setShowActivation(false);
+    localStorage.setItem('alarmEnabled', 'true');
   };
 
-  const checkNotificationSettings = async () => {
-    if (!('Notification' in window)) {
-      return;
+  // Stop alarm and dismiss the alert
+  const handleDismissAlarm = () => {
+    if (alarm) {
+      alarm.stopAlarm();
     }
-    
-    const permission = Notification.permission;
-    
-    if (permission === 'default') {
-      // Not yet asked - show guide
-      setShowSettingsGuide(true);
-    } else if (permission === 'denied') {
-      // Denied - show guide to enable in system settings
-      setShowSettingsGuide(true);
-    } else if (permission === 'granted') {
-      // Already granted - mark as done
-      setNotificationsEnabled(true);
-      localStorage.setItem('settingsCheckDone', 'true');
-      setSettingsCheckDone(true);
-    }
+    setAlarmActive(false);
+    setNewOrderAlert(null);
   };
 
-  const handleEnableNotifications = async () => {
-    if (!('Notification' in window)) {
-      alert('Dein Browser unterstützt keine Benachrichtigungen');
-      return;
+  // Test the alarm
+  const handleTestAlarm = () => {
+    if (alarm) {
+      alarm.init();
+      alarm.testAlarm();
     }
-
-    const permission = await Notification.requestPermission();
-    setNotificationsEnabled(permission === 'granted');
-    
-    if (permission === 'granted') {
-      // Send test notification via Service Worker
-      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({
-          type: 'NEW_ORDER',
-          tableNumber: 'Test',
-          orderType: 'order',
-          total: '0.00'
-        });
-      }
-      // Also activate vibration
-      triggerVibration();
-      localStorage.setItem('settingsCheckDone', 'true');
-      setSettingsCheckDone(true);
-      setShowSettingsGuide(false);
-    } else {
-      // Show guide if denied
-      setShowSettingsGuide(true);
-    }
-  };
-
-  // Vibration function that works reliably
-  const triggerVibration = () => {
-    try {
-      // Try multiple vibration patterns to ensure it works
-      if ('vibrate' in navigator) {
-        // Strong vibration pattern: 500ms on, 200ms off, repeated
-        const pattern = [500, 200, 500, 200, 500, 200, 500, 200, 500];
-        navigator.vibrate(pattern);
-        return true;
-      }
-    } catch (e) {
-      console.log('Vibration failed:', e);
-    }
-    return false;
-  };
-
-  const handleActivateVibration = () => {
-    // This function MUST be called from a user gesture (tap/click)
-    const success = triggerVibration();
-    if (success) {
-      setVibrationEnabled(true);
-      setShowVibrationBanner(false);
-      localStorage.setItem('vibrationEnabled', 'true');
-      alert('✅ Vibration aktiviert! Dein Handy vibriert jetzt bei neuen Bestellungen.');
-    } else {
-      alert('⚠️ Vibration wird von deinem Gerät nicht unterstützt.');
-    }
-  };
-
-  const handleTestVibration = () => {
-    triggerVibration();
   };
 
   const formatTime = (timestamp: number) => {
@@ -414,45 +409,6 @@ export default function WaiterPage() {
             >
               Starten
             </button>
-
-            {/* Install App Section */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <h3 className="font-bold text-gray-700 mb-3">📱 App installieren</h3>
-              
-              {isInstalled ? (
-                <div className="text-green-600 font-medium flex items-center gap-2">
-                  <span>✅</span> App ist installiert!
-                </div>
-              ) : installPrompt ? (
-                <button
-                  onClick={handleInstall}
-                  className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold"
-                >
-                  📲 App installieren
-                </button>
-              ) : (
-                <div className="text-sm text-gray-500">
-                  <p className="mb-2"><strong>Android:</strong> Tippe auf ⋮ → "Zum Startbildschirm hinzufügen"</p>
-                  <p><strong>iPhone:</strong> Tippe auf Teilen → "Zum Home-Bildschirm"</p>
-                </div>
-              )}
-
-              {/* Notification Permission */}
-              <div className="mt-4">
-                {notificationsEnabled ? (
-                  <div className="text-green-600 font-medium flex items-center gap-2">
-                    <span>🔔</span> Benachrichtigungen aktiviert!
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleEnableNotifications}
-                    className="w-full py-3 bg-orange-500 text-white rounded-xl font-bold"
-                  >
-                    🔔 Benachrichtigungen aktivieren
-                  </button>
-                )}
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -462,88 +418,80 @@ export default function WaiterPage() {
   // Main Waiter View
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Settings Guide Modal */}
-      {showSettingsGuide && (
-        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
-            <div className="text-6xl mb-4 text-center">⚙️</div>
-            <h2 className="text-2xl font-bold mb-4 text-center">Benachrichtigungen einrichten</h2>
-            
-            <div className="space-y-4 text-left mb-6">
-              <div className="bg-yellow-50 border-2 border-yellow-400 rounded-xl p-4">
-                <p className="font-bold text-yellow-800 mb-2">🔔 WICHTIG für gesperrten Bildschirm!</p>
-                <p className="text-sm text-yellow-700">
-                  Damit dein Handy bei gesperrtem Bildschirm vibriert, musst du die Benachrichtigungen aktivieren.
-                </p>
-              </div>
-
-              <div className="bg-blue-50 border-2 border-blue-400 rounded-xl p-4">
-                <p className="font-bold text-blue-800 mb-2">📱 Android:</p>
-                <ol className="text-sm text-blue-700 space-y-1 list-decimal list-inside">
-                  <li>Tippe unten auf "Erlauben"</li>
-                  <li>Falls blockiert: Einstellungen → Apps → Kellner</li>
-                  <li>Benachrichtigungen aktivieren</li>
-                  <li>Auf Sperrbildschirm anzeigen: AN</li>
-                  <li>Ton & Vibration: AN</li>
-                </ol>
-              </div>
-
-              <div className="bg-purple-50 border-2 border-purple-400 rounded-xl p-4">
-                <p className="font-bold text-purple-800 mb-2">🍎 iPhone:</p>
-                <ol className="text-sm text-purple-700 space-y-1 list-decimal list-inside">
-                  <li>Tippe unten auf "Erlauben"</li>
-                  <li>Falls blockiert: Einstellungen → Mitteilungen</li>
-                  <li>Kellner-App suchen</li>
-                  <li>Mitteilungen erlauben: AN</li>
-                  <li>Töne: AN (Vibration automatisch dabei)</li>
-                  <li>Im Sperrbildschirm: AN</li>
-                </ol>
-              </div>
+      {/* FULL SCREEN ALARM ALERT - Flashing! */}
+      {alarmActive && newOrderAlert && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 animate-pulse"
+          style={{ 
+            background: 'linear-gradient(45deg, #ff0000, #ff6600, #ff0000)',
+            animation: 'flash 0.5s infinite alternate'
+          }}
+          onClick={handleDismissAlarm}
+        >
+          <style jsx>{`
+            @keyframes flash {
+              0% { background: #ff0000; }
+              100% { background: #ffff00; }
+            }
+          `}</style>
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full text-center shadow-2xl">
+            <div className="text-8xl mb-4">🚨</div>
+            <h1 className="text-4xl font-black text-red-600 mb-4">
+              NEUE BESTELLUNG!
+            </h1>
+            <div className="text-6xl font-black text-gray-900 mb-4">
+              Tisch {newOrderAlert.tableNumber}
             </div>
-
+            {newOrderAlert.type === 'waiter_call' ? (
+              <p className="text-2xl text-orange-600 font-bold">🙋 Kellner gerufen!</p>
+            ) : (
+              <p className="text-2xl text-green-600 font-bold">
+                💰 {newOrderAlert.total?.toFixed(2)} €
+              </p>
+            )}
             <button
-              onClick={handleEnableNotifications}
-              className="w-full py-4 bg-green-600 text-white rounded-xl text-xl font-bold mb-3"
+              onClick={handleDismissAlarm}
+              className="mt-8 w-full py-6 bg-green-600 text-white rounded-2xl text-2xl font-black"
             >
-              ✅ BENACHRICHTIGUNGEN ERLAUBEN
-            </button>
-            
-            <button
-              onClick={() => {
-                setShowSettingsGuide(false);
-                localStorage.setItem('settingsCheckDone', 'true');
-                setSettingsCheckDone(true);
-              }}
-              className="w-full py-2 text-gray-600 text-sm"
-            >
-              Später einrichten
+              ✅ VERSTANDEN - ALARM STOPPEN
             </button>
           </div>
         </div>
       )}
 
-      {/* Vibration Activation Banner - MUST tap to enable */}
-      {showVibrationBanner && !showSettingsGuide && (
-        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center">
-            <div className="text-6xl mb-4">📳</div>
-            <h2 className="text-2xl font-bold mb-2">Vibration aktivieren</h2>
-            <p className="text-gray-600 mb-6">
-              Tippe auf den Button um Vibration zu aktivieren. 
-              Dein Handy vibriert dann bei neuen Bestellungen!
+      {/* ONE-TAP ACTIVATION SCREEN */}
+      {showActivation && !alarmActive && (
+        <div className="fixed inset-0 bg-black/90 z-40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full text-center">
+            <div className="text-6xl mb-4">🔊</div>
+            <h2 className="text-3xl font-bold mb-4 text-gray-900">Alarm aktivieren</h2>
+            
+            <div className="bg-red-100 border-2 border-red-500 rounded-xl p-4 mb-6 text-left">
+              <p className="font-bold text-red-700 mb-2">⚠️ WICHTIG!</p>
+              <p className="text-red-600">
+                Tippe auf den Button um den <strong>LAUTEN ALARM</strong> zu aktivieren.
+                Bei jeder neuen Bestellung ertönt ein lauter Alarm + Vibration!
+              </p>
+            </div>
+
+            <div className="bg-yellow-100 border-2 border-yellow-500 rounded-xl p-4 mb-6 text-left">
+              <p className="font-bold text-yellow-700 mb-2">📱 Handy-Lautstärke!</p>
+              <p className="text-yellow-600">
+                Stelle sicher dass dein <strong>Handy NICHT auf lautlos</strong> ist!
+                Der Alarm funktioniert über den Lautsprecher.
+              </p>
+            </div>
+
+            <button
+              onClick={handleActivateAlarm}
+              className="w-full py-6 bg-red-600 text-white rounded-2xl text-2xl font-black animate-pulse"
+            >
+              🔊 ALARM AKTIVIEREN
+            </button>
+            
+            <p className="mt-4 text-gray-500 text-sm">
+              Du hörst einen Test-Ton wenn aktiviert
             </p>
-            <button
-              onClick={handleActivateVibration}
-              className="w-full py-4 bg-red-600 text-white rounded-xl text-xl font-bold animate-pulse"
-            >
-              📳 JETZT AKTIVIEREN
-            </button>
-            <button
-              onClick={() => setShowVibrationBanner(false)}
-              className="mt-3 text-gray-500 text-sm"
-            >
-              Später
-            </button>
           </div>
         </div>
       )}
@@ -559,10 +507,10 @@ export default function WaiterPage() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={handleTestVibration}
+              onClick={handleTestAlarm}
               className="px-3 py-2 bg-white/20 rounded-lg text-sm"
             >
-              📳 Test
+              🔊 Test
             </button>
             <button
               onClick={handleReset}
@@ -572,6 +520,11 @@ export default function WaiterPage() {
             </button>
           </div>
         </div>
+        {alarmEnabled && (
+          <div className="mt-2 bg-green-500 rounded-lg px-3 py-1 text-sm text-center">
+            ✅ Alarm aktiv - Handy laut lassen!
+          </div>
+        )}
       </div>
 
       {/* Orders */}
@@ -580,22 +533,22 @@ export default function WaiterPage() {
           <div className="text-center py-20">
             <p className="text-4xl mb-4">✨</p>
             <p className="text-xl text-gray-500">Keine Bestellungen</p>
-            <p className="text-gray-400 mt-2">Dein Handy vibriert bei neuen Bestellungen</p>
+            <p className="text-gray-400 mt-2">Alarm ertönt bei neuen Bestellungen</p>
             
-            {/* Test Vibration Button */}
+            {/* Test Alarm Button */}
             <button
-              onClick={handleTestVibration}
+              onClick={handleTestAlarm}
               className="mt-6 px-6 py-3 bg-evm-green text-white rounded-xl font-bold"
             >
-              📳 Vibration testen
+              🔊 Alarm testen
             </button>
             
-            {!vibrationEnabled && (
+            {!alarmEnabled && (
               <button
-                onClick={handleActivateVibration}
+                onClick={() => setShowActivation(true)}
                 className="mt-3 px-6 py-3 bg-red-600 text-white rounded-xl font-bold block mx-auto"
               >
-                ⚠️ Vibration aktivieren
+                ⚠️ Alarm aktivieren
               </button>
             )}
           </div>
