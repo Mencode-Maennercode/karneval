@@ -56,6 +56,57 @@ export default function TablePage() {
     return () => unsubscribe();
   }, []);
 
+  // Set the tisch manifest for PWA with dynamic start_url
+  useEffect(() => {
+    if (!code) return;
+    
+    // Create dynamic manifest with current table URL
+    const manifest = {
+      name: `Karneval Tisch ${tableNumber || ''}`,
+      short_name: `Tisch ${tableNumber || ''}`,
+      description: 'Tisch-App für das Karneval Bestellsystem - Bestelle Getränke direkt vom Tisch',
+      start_url: `/tisch/${code}`,
+      scope: `/tisch/${code}`,
+      display: 'standalone',
+      background_color: '#009640',
+      theme_color: '#009640',
+      orientation: 'portrait',
+      icons: [
+        {
+          src: '/icons/icon-192.png',
+          sizes: '192x192',
+          type: 'image/png',
+          purpose: 'maskable any'
+        },
+        {
+          src: '/icons/icon-512.png',
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'maskable any'
+        }
+      ]
+    };
+
+    // Create blob URL for dynamic manifest
+    const blob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+    const manifestUrl = URL.createObjectURL(blob);
+
+    // Update or create manifest link
+    let manifestLink = document.querySelector('link[rel="manifest"]') as HTMLLinkElement;
+    if (manifestLink) {
+      manifestLink.href = manifestUrl;
+    } else {
+      manifestLink = document.createElement('link');
+      manifestLink.rel = 'manifest';
+      manifestLink.href = manifestUrl;
+      document.head.appendChild(manifestLink);
+    }
+
+    return () => {
+      URL.revokeObjectURL(manifestUrl);
+    };
+  }, [code, tableNumber]);
+
   // PWA Install Detection
   useEffect(() => {
     // Check if already installed as PWA
@@ -375,7 +426,7 @@ export default function TablePage() {
             className="w-full bg-white/90 backdrop-blur text-evm-green py-4 rounded-2xl text-lg font-bold shadow-xl active:scale-95 transition-transform mt-4 flex items-center justify-center gap-2"
           >
             <span className="text-2xl">📲</span>
-            <span>Als App installieren</span>
+            <span>Tisch {tableNumber} als App speichern</span>
           </button>
         )}
           </div>
@@ -418,8 +469,11 @@ export default function TablePage() {
       {showIOSInstallHint && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={() => setShowIOSInstallHint(false)}>
           <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center" onClick={(e) => e.stopPropagation()}>
-            <div className="text-5xl mb-4">📲</div>
-            <h2 className="text-xl font-bold text-gray-800 mb-4">App installieren (iOS)</h2>
+            <div className="text-5xl mb-4">🍺</div>
+            <h2 className="text-xl font-bold text-gray-800 mb-4">Tisch {tableNumber} App installieren</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Installiere diese Seite als App auf deinem Handy - so findest du sie immer schnell wieder!
+            </p>
             <div className="text-left space-y-3 mb-6">
               <div className="flex items-center gap-3 p-3 bg-gray-100 rounded-xl">
                 <span className="text-2xl">1️⃣</span>
@@ -435,7 +489,7 @@ export default function TablePage() {
               </div>
             </div>
             <p className="text-sm text-gray-500 mb-4">
-              Die App passt sich automatisch an die aktuellen Einstellungen an!
+              Die App öffnet immer direkt Tisch {tableNumber}!
             </p>
             <button
               onClick={() => setShowIOSInstallHint(false)}
