@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { database, ref, onValue, remove } from '@/lib/firebase';
+import { database, ref, onValue, remove, push } from '@/lib/firebase';
 
 interface Order {
   id: string;
@@ -134,6 +134,13 @@ export default function WaiterPage() {
   const [alarmEnabled, setAlarmEnabled] = useState(false);
   const [showActivation, setShowActivation] = useState(true);
   const [wakeLock, setWakeLock] = useState<any>(null);
+  
+  // Waiter order form state
+  const [showOrderForm, setShowOrderForm] = useState(false);
+  const [orderTableNumber, setOrderTableNumber] = useState<number | null>(null);
+  const [orderWater, setOrderWater] = useState(0);
+  const [orderBeer, setOrderBeer] = useState(0);
+  const [orderSent, setOrderSent] = useState(false);
 
   // Force re-render every 10 seconds to update alert phases
   useEffect(() => {
@@ -310,6 +317,49 @@ export default function WaiterPage() {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  // Open order form for a specific table
+  const handleOpenOrderForm = (tableNum: number) => {
+    setOrderTableNumber(tableNum);
+    setOrderWater(0);
+    setOrderBeer(0);
+    setOrderSent(false);
+    setShowOrderForm(true);
+  };
+
+  // Submit waiter order
+  const handleSubmitWaiterOrder = async () => {
+    if (!orderTableNumber) return;
+    
+    const orderTotal = orderWater * 1 + orderBeer * 2;
+    if (orderTotal === 0) return;
+
+    const items: { name: string; price: number; quantity: number }[] = [];
+    if (orderWater > 0) items.push({ name: 'Wasser', price: 1, quantity: orderWater });
+    if (orderBeer > 0) items.push({ name: 'Bier', price: 2, quantity: orderBeer });
+
+    await push(ref(database, 'orders'), {
+      tableCode: `waiter-${orderTableNumber}`,
+      tableNumber: orderTableNumber,
+      items: items,
+      total: orderTotal,
+      type: 'order',
+      timestamp: Date.now(),
+      status: 'new',
+      orderedBy: waiterName,
+    });
+
+    setOrderSent(true);
+    
+    if (navigator.vibrate) {
+      navigator.vibrate(100);
+    }
+
+    setTimeout(() => {
+      setShowOrderForm(false);
+      setOrderSent(false);
+    }, 1500);
   };
 
   // Setup Screen
@@ -608,6 +658,129 @@ export default function WaiterPage() {
       {orders.length > 0 && (
         <div className="fixed bottom-6 right-6 w-16 h-16 bg-red-600 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-xl">
           {orders.length}
+        </div>
+      )}
+
+      {/* Quick Order Buttons for assigned tables */}
+      <div className="fixed bottom-6 left-6 right-24">
+        <div className="bg-white rounded-2xl shadow-xl p-3">
+          <p className="text-xs text-gray-500 mb-2 text-center">🛒 Bestellung aufgeben für:</p>
+          <div className="flex flex-wrap gap-2 justify-center">
+            {assignedTables.map(tableNum => (
+              <button
+                key={tableNum}
+                onClick={() => handleOpenOrderForm(tableNum)}
+                className="px-4 py-2 bg-evm-green text-white rounded-lg font-bold text-sm active:scale-95 transition-transform"
+              >
+                T{tableNum}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Waiter Order Form Modal */}
+      {showOrderForm && orderTableNumber && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            {orderSent ? (
+              <div className="text-center py-8">
+                <div className="text-6xl mb-4">✅</div>
+                <p className="text-2xl font-bold text-green-600">Bestellung gesendet!</p>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold text-gray-800">
+                    🛒 Bestellung T{orderTableNumber}
+                  </h2>
+                  <button
+                    onClick={() => setShowOrderForm(false)}
+                    className="text-2xl text-gray-500"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Water */}
+                <div className="flex items-center justify-between mb-4 p-3 bg-blue-50 rounded-xl">
+                  <div>
+                    <p className="font-bold text-lg">💧 Wasser</p>
+                    <p className="text-gray-600">1,00 €</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => setOrderWater(Math.max(0, orderWater - 1))}
+                      className="w-12 h-12 bg-gray-200 rounded-full text-2xl font-bold active:bg-gray-300"
+                    >
+                      -
+                    </button>
+                    <span className="text-2xl font-bold w-8 text-center">{orderWater}</span>
+                    <button 
+                      onClick={() => setOrderWater(orderWater + 1)}
+                      className="w-12 h-12 bg-evm-green text-white rounded-full text-2xl font-bold active:bg-green-700"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Beer */}
+                <div className="flex items-center justify-between mb-6 p-3 bg-amber-50 rounded-xl">
+                  <div>
+                    <p className="font-bold text-lg">🍺 Bier</p>
+                    <p className="text-gray-600">2,00 €</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => setOrderBeer(Math.max(0, orderBeer - 1))}
+                      className="w-12 h-12 bg-gray-200 rounded-full text-2xl font-bold active:bg-gray-300"
+                    >
+                      -
+                    </button>
+                    <span className="text-2xl font-bold w-8 text-center">{orderBeer}</span>
+                    <button 
+                      onClick={() => setOrderBeer(orderBeer + 1)}
+                      className="w-12 h-12 bg-evm-green text-white rounded-full text-2xl font-bold active:bg-green-700"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
+                {/* Total */}
+                <div className="border-t-2 border-gray-200 pt-4 mb-6">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xl font-bold">Gesamt:</span>
+                    <span className="text-3xl font-bold text-evm-green">
+                      {(orderWater * 1 + orderBeer * 2).toFixed(2)} €
+                    </span>
+                  </div>
+                </div>
+
+                {/* Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowOrderForm(false)}
+                    className="flex-1 py-4 bg-gray-200 text-gray-700 rounded-xl font-bold text-lg"
+                  >
+                    Abbrechen
+                  </button>
+                  <button
+                    onClick={handleSubmitWaiterOrder}
+                    disabled={orderWater + orderBeer === 0}
+                    className={`flex-1 py-4 rounded-xl font-bold text-lg ${
+                      orderWater + orderBeer > 0
+                        ? 'bg-evm-green text-white'
+                        : 'bg-gray-300 text-gray-500'
+                    }`}
+                  >
+                    Bestellen
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>
