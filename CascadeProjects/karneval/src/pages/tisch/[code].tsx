@@ -75,6 +75,21 @@ export default function TablePage() {
     return () => unsubscribe();
   }, []);
 
+  // Auto-refresh when menu version changes (silent reload)
+  useEffect(() => {
+    let currentVersion: number | null = null;
+    const menuVersionRef = ref(database, 'system/menuVersion');
+    const unsubscribe = onValue(menuVersionRef, (snapshot) => {
+      const newVersion = snapshot.val();
+      if (currentVersion !== null && newVersion !== null && newVersion !== currentVersion) {
+        // Version changed - reload silently
+        window.location.reload();
+      }
+      currentVersion = newVersion;
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Set the tisch manifest for PWA with dynamic start_url
   useEffect(() => {
     if (!code) return;
@@ -534,7 +549,7 @@ export default function TablePage() {
                         </span>
                       </div>
                       <p className="font-bold text-sm text-gray-800">Kiste Kurze</p>
-                      <p className="text-xs text-gray-500">Berliner / Bärbelchen / Glitter</p>
+                      <p className="text-xs text-gray-500">Bärbelchen / Glitter Pitter</p>
                     </button>
 
                   </div>

@@ -228,6 +228,11 @@ export default function BarDashboard() {
     }
   };
 
+  // Trigger menu refresh on all client devices
+  const handleMenuRefresh = async () => {
+    await set(ref(database, 'system/menuVersion'), Date.now());
+  };
+
   // Filter out expired orders
   const activeOrders = orders.filter(order => getAlertPhase(order.timestamp) !== 'expired');
 
@@ -285,6 +290,13 @@ export default function BarDashboard() {
               }`}
             >
               {isOrderFormDisabled ? '🛒 Bestellungen aktivieren' : '🚫 Bestellungen sperren'}
+            </button>
+            <button
+              onClick={handleMenuRefresh}
+              className="px-6 py-3 rounded-xl font-bold text-xl bg-cyan-600 hover:bg-cyan-700 transition-all"
+              title="Aktualisiert alle Kunden-Geräte"
+            >
+              🔄 Menü-Refresh
             </button>
             <button
               onClick={handleEmergencyToggle}
