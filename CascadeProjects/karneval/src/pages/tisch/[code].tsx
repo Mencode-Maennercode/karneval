@@ -2,6 +2,7 @@ import { useRouter } from 'next/router';
 import { useState, useEffect } from 'react';
 import { database, ref, push, onValue } from '@/lib/firebase';
 import { getTableNumber, isValidTableCode } from '@/lib/tables';
+import { menuItems, categories, premiumItems, formatPrice, MenuItem } from '@/lib/menu';
 
 interface OrderItem {
   name: string;
@@ -15,22 +16,40 @@ interface OrderHistory {
   timestamp: number;
 }
 
+interface CartItem {
+  item: MenuItem;
+  quantity: number;
+}
+
 export default function TablePage() {
   const router = useRouter();
   const { code } = router.query;
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [isShutdown, setIsShutdown] = useState(false);
   const [isOrderFormDisabled, setIsOrderFormDisabled] = useState(false);
-  const [water, setWater] = useState(0);
-  const [beer, setBeer] = useState(0);
   const [orderSent, setOrderSent] = useState(false);
   const [waiterCalled, setWaiterCalled] = useState(false);
   const [orderHistory, setOrderHistory] = useState<OrderHistory[]>([]);
+  const [allOrders, setAllOrders] = useState<any[]>([]);
   const [, setTick] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
   const [showIOSInstallHint, setShowIOSInstallHint] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  
+  // New menu state
+  const [cart, setCart] = useState<{ [key: string]: number }>({});
+  const [activeCategory, setActiveCategory] = useState<string>('alle');
+  const [showCart, setShowCart] = useState(false);
+  
+  // Selection modals
+  const [showBottleSelection, setShowBottleSelection] = useState(false);
+  const [showBeerCrateSelection, setShowBeerCrateSelection] = useState(false);
+  const [showWineBottleSelection, setShowWineBottleSelection] = useState(false);
+  const [showShotSelection, setShowShotSelection] = useState(false);
+  
+  // Temporary quantity for modals
+  const [tempQuantity, setTempQuantity] = useState<{ [key: string]: number }>({});
 
   useEffect(() => {
     if (code && typeof code === 'string') {
@@ -141,6 +160,24 @@ export default function TablePage() {
     };
   }, []);
 
+  // Subscribe to all orders to calculate popular items
+  useEffect(() => {
+    const ordersRef = ref(database, 'orders');
+    const unsubscribe = onValue(ordersRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const ordersArray = Object.entries(data).map(([id, order]: [string, any]) => ({
+          id,
+          ...order
+        }));
+        setAllOrders(ordersArray);
+      } else {
+        setAllOrders([]);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
   // Force re-render every 30 seconds to clean up old orders
   useEffect(() => {
     const interval = setInterval(() => {
@@ -156,14 +193,74 @@ export default function TablePage() {
     return () => clearInterval(interval);
   }, []);
 
-  const total = water * 1 + beer * 2;
+  // Cart helper functions
+  const addToCart = (itemId: string) => {
+    setCart(prev => ({ ...prev, [itemId]: (prev[itemId] || 0) + 1 }));
+  };
+
+  const removeFromCart = (itemId: string) => {
+    setCart(prev => {
+      const newCart = { ...prev };
+      if (newCart[itemId] > 1) {
+        newCart[itemId]--;
+      } else {
+        delete newCart[itemId];
+      }
+      return newCart;
+    });
+  };
+
+  const getCartQuantity = (itemId: string) => cart[itemId] || 0;
+
+  const cartTotal = Object.entries(cart).reduce((sum, [itemId, qty]) => {
+    const item = menuItems.find(i => i.id === itemId);
+    return sum + (item ? item.price * qty : 0);
+  }, 0);
+
+  const cartItemCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
+
+  // Calculate top 5 popular items based on all orders
+  const getTop5PopularItems = (): Set<string> => {
+    const itemCounts: { [key: string]: number } = {};
+    
+    allOrders.forEach(order => {
+      if (order.items) {
+        order.items.forEach((item: OrderItem) => {
+          const menuItem = menuItems.find(m => m.name === item.name);
+          if (menuItem) {
+            itemCounts[menuItem.id] = (itemCounts[menuItem.id] || 0) + item.quantity;
+          }
+        });
+      }
+    });
+    
+    const sortedItems = Object.entries(itemCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([itemId]) => itemId);
+    
+    return new Set(sortedItems);
+  };
+
+  const top5PopularIds = getTop5PopularItems();
+
+  // Get items with dynamic popularity
+  const getItemsWithDynamicPopularity = () => {
+    return menuItems.map(item => ({
+      ...item,
+      isPopular: top5PopularIds.has(item.id)
+    }));
+  };
+
+  const dynamicMenuItems = getItemsWithDynamicPopularity();
 
   const handleOrder = async () => {
-    if (total === 0) return;
+    if (cartItemCount === 0) return;
     
-    const items: OrderItem[] = [];
-    if (water > 0) items.push({ name: 'Wasser', price: 1, quantity: water });
-    if (beer > 0) items.push({ name: 'Bier', price: 2, quantity: beer });
+    const items: OrderItem[] = Object.entries(cart).map(([itemId, qty]) => {
+      const item = menuItems.find(i => i.id === itemId)!;
+      return { name: item.name, price: item.price, quantity: qty };
+    });
 
     const timestamp = Date.now();
 
@@ -171,18 +268,18 @@ export default function TablePage() {
       tableCode: code,
       tableNumber: tableNumber,
       items: items,
-      total: total,
+      total: cartTotal,
       type: 'order',
       timestamp: timestamp,
       status: 'new',
     });
 
     // Add to order history
-    setOrderHistory(prev => [{ items, total, timestamp }, ...prev]);
+    setOrderHistory(prev => [{ items, total: cartTotal, timestamp }, ...prev]);
 
     setOrderSent(true);
-    setWater(0);
-    setBeer(0);
+    setCart({});
+    setShowCart(false);
     
     // Vibration feedback
     if (navigator.vibrate) {
@@ -192,10 +289,15 @@ export default function TablePage() {
     setTimeout(() => setOrderSent(false), 3000);
   };
 
-  const handleNewOrder = () => {
-    setWater(0);
-    setBeer(0);
-    setOrderSent(false);
+  const handleClearCart = () => {
+    setCart({});
+    setShowCart(false);
+  };
+
+  // Filter items by category
+  const getFilteredItems = () => {
+    if (activeCategory === 'alle') return dynamicMenuItems;
+    return dynamicMenuItems.filter(i => i.category === activeCategory);
   };
 
   // Filter order history to only show orders from last 6 minutes
@@ -319,85 +421,172 @@ export default function TablePage() {
 
             {/* Order Form - only show when not disabled */}
         {!isOrderFormDisabled ? (
-          <div className="bg-white/90 backdrop-blur rounded-2xl p-6 shadow-xl mb-4">
-            <h2 className="text-xl font-bold text-center mb-6 text-gray-800">Bestellung</h2>
-            
-            {/* Water */}
-            <div className="flex items-center justify-between mb-4 p-3 bg-blue-50 rounded-xl">
-              <div>
-                <p className="font-bold text-lg">💧 Wasser</p>
-                <p className="text-gray-600">1,00 €</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => setWater(Math.max(0, water - 1))}
-                  className="w-12 h-12 bg-gray-200 rounded-full text-2xl font-bold active:bg-gray-300"
-                >
-                  -
-                </button>
-                <span className="text-2xl font-bold w-8 text-center">{water}</span>
-                <button 
-                  onClick={() => setWater(water + 1)}
-                  className="w-12 h-12 bg-evm-green text-white rounded-full text-2xl font-bold active:bg-green-700"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-
-            {/* Beer */}
-            <div className="flex items-center justify-between mb-6 p-3 bg-amber-50 rounded-xl">
-              <div>
-                <p className="font-bold text-lg">🍺 Bier</p>
-                <p className="text-gray-600">2,00 €</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <button 
-                  onClick={() => setBeer(Math.max(0, beer - 1))}
-                  className="w-12 h-12 bg-gray-200 rounded-full text-2xl font-bold active:bg-gray-300"
-                >
-                  -
-                </button>
-                <span className="text-2xl font-bold w-8 text-center">{beer}</span>
-                <button 
-                  onClick={() => setBeer(beer + 1)}
-                  className="w-12 h-12 bg-evm-green text-white rounded-full text-2xl font-bold active:bg-green-700"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-
-            {/* Total */}
-            <div className="border-t-2 border-gray-200 pt-4 mb-6">
-              <div className="flex justify-between items-center">
-                <span className="text-xl font-bold">Gesamt:</span>
-                <span className="text-3xl font-bold text-evm-green">{total.toFixed(2)} €</span>
-              </div>
-            </div>
-
-            {/* Order Button */}
-            <button 
-              onClick={handleOrder}
-              disabled={total === 0}
-              className={`w-full py-4 rounded-xl text-xl font-bold transition-all ${
-                total > 0 
-                  ? 'bg-evm-green text-white active:scale-95 shadow-lg ring-2 ring-white/20' 
-                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-              }`}
-            >
-              🛒 Durst löschen
-            </button>
-
-            {/* New Order Button */}
-            {(water > 0 || beer > 0) && (
-              <button 
-                onClick={handleNewOrder}
-                className="w-full mt-3 py-3 rounded-xl text-lg font-bold bg-gray-200 text-gray-700 active:scale-95 transition-all"
+          <div className="bg-white/90 backdrop-blur rounded-2xl shadow-xl mb-4 overflow-hidden">
+            {/* Category Tabs */}
+            <div className="flex overflow-x-auto bg-gray-100 p-1 gap-1">
+              <button
+                onClick={() => setActiveCategory('alle')}
+                className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${
+                  activeCategory === 'alle' ? 'bg-evm-green text-white' : 'bg-white text-gray-700'
+                }`}
               >
-                🔄 Misst, han mich verdon
+                🍹 Alle
               </button>
-            )}
+              {categories.map(cat => (
+                <button
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
+                  className={`px-4 py-2 rounded-lg font-bold text-sm whitespace-nowrap transition-all ${
+                    activeCategory === cat.id ? 'bg-evm-green text-white' : 'bg-white text-gray-700'
+                  }`}
+                >
+                  {cat.emoji} {cat.name}
+                </button>
+              ))}
+            </div>
+
+            <div className="p-4">
+              {/* Premium Items - "Für den Tisch" Section */}
+              {activeCategory === 'alle' && (
+                <div className="mb-6">
+                  <h3 className="text-sm font-bold text-amber-700 mb-2 flex items-center gap-2">
+                    <span className="text-lg">✨</span> Für den ganzen Tisch
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Flasche Unalkoholisch Button */}
+                    <button
+                      onClick={() => setShowBottleSelection(true)}
+                      className="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 text-left hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-2xl">🍾</span>
+                        <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                          ab 5,00 €
+                        </span>
+                      </div>
+                      <p className="font-bold text-sm text-gray-800">Flasche Unalkoholisch</p>
+                      <p className="text-xs text-gray-500">Wasser / Cola / Limo</p>
+                    </button>
+
+                    {/* Kiste Bier Button */}
+                    <button
+                      onClick={() => setShowBeerCrateSelection(true)}
+                      className="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 text-left hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-2xl">📦</span>
+                        <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                          60,00 €
+                        </span>
+                      </div>
+                      <p className="font-bold text-sm text-gray-800">Kiste Bier</p>
+                      <p className="text-xs text-gray-500">24 Flaschen</p>
+                    </button>
+
+                    {/* Wein/Secco Flasche Button */}
+                    <button
+                      onClick={() => setShowWineBottleSelection(true)}
+                      className="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 text-left hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-2xl">🍾</span>
+                        <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                          ab 18,00 €
+                        </span>
+                      </div>
+                      <p className="font-bold text-sm text-gray-800">Wein / Secco Flasche</p>
+                      <p className="text-xs text-gray-500">Verschiedene Sorten</p>
+                    </button>
+
+                    {/* Kurze Button */}
+                    <button
+                      onClick={() => setShowShotSelection(true)}
+                      className="bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200 rounded-xl p-3 text-left hover:shadow-md transition-shadow"
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="text-2xl">🥃</span>
+                        <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                          ab 50,00 €
+                        </span>
+                      </div>
+                      <p className="font-bold text-sm text-gray-800">Kiste Kurze</p>
+                      <p className="text-xs text-gray-500">Berliner / Bärbelchen / Glitter</p>
+                    </button>
+
+                  </div>
+                </div>
+              )}
+
+              {/* Regular Items */}
+              <h3 className="text-sm font-bold text-gray-600 mb-2">
+                {activeCategory === 'alle' ? '🥤 Getränke' : categories.find(c => c.id === activeCategory)?.emoji + ' ' + categories.find(c => c.id === activeCategory)?.name}
+              </h3>
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto">
+                {getFilteredItems().map(item => (
+                  <div
+                    key={item.id}
+                    className={`flex items-center justify-between p-3 rounded-xl ${
+                      item.isPopular ? 'bg-green-50 border border-green-200' : 'bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{item.emoji}</span>
+                      <div>
+                        <p className="font-bold text-gray-800">
+                          {item.name}
+                          {item.isPopular && <span className="ml-2 text-xs text-green-600">⭐ Beliebt</span>}
+                        </p>
+                        <p className="text-sm text-gray-500">
+                          {item.size && <span>{item.size} · </span>}
+                          <span className="font-semibold text-evm-green">{formatPrice(item.price)}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {getCartQuantity(item.id) > 0 && (
+                        <>
+                          <button
+                            onClick={() => removeFromCart(item.id)}
+                            className="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold active:bg-gray-300"
+                          >
+                            -
+                          </button>
+                          <span className="font-bold text-xl w-8 text-center">{getCartQuantity(item.id)}</span>
+                        </>
+                      )}
+                      <button
+                        onClick={() => addToCart(item.id)}
+                        className="w-10 h-10 bg-evm-green text-white rounded-full text-xl font-bold active:bg-green-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Cart Summary & Order Button */}
+              {cartItemCount > 0 && (
+                <div className="mt-4 pt-4 border-t-2 border-gray-200">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-bold text-gray-700">{cartItemCount} Artikel</span>
+                    <span className="text-2xl font-bold text-evm-green">{formatPrice(cartTotal)}</span>
+                  </div>
+                  <button
+                    onClick={handleOrder}
+                    className="w-full py-4 rounded-xl text-xl font-bold bg-evm-green text-white active:scale-95 shadow-lg transition-all"
+                  >
+                    🛒 Bestellen ({formatPrice(cartTotal)})
+                  </button>
+                  <button
+                    onClick={handleClearCart}
+                    className="w-full mt-2 py-2 rounded-lg text-sm font-bold bg-gray-200 text-gray-600"
+                  >
+                    🔄 Warenkorb leeren
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className="bg-yellow-100/90 backdrop-blur rounded-2xl p-6 shadow-xl mb-4 text-center">
@@ -428,6 +617,242 @@ export default function TablePage() {
             <span className="text-2xl">📲</span>
             <span>Tisch {tableNumber} als App speichern</span>
           </button>
+        )}
+
+        {/* Selection Modals */}
+        {/* Bottle Selection Modal */}
+        {showBottleSelection && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">🍾 Flasche wählen</h2>
+                <button onClick={() => { setShowBottleSelection(false); setTempQuantity({}); }} className="text-2xl text-gray-500">✕</button>
+              </div>
+              <div className="space-y-3 mb-4">
+                {menuItems.filter(i => ['flasche-wasser', 'flasche-cola', 'flasche-limo'].includes(i.id)).map(item => (
+                  <div key={item.id} className="p-4 bg-gray-50 rounded-xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{item.emoji}</span>
+                        <div className="text-left">
+                          <p className="font-bold text-gray-800">{item.name}</p>
+                          <p className="text-sm text-gray-500">{item.size}</p>
+                        </div>
+                      </div>
+                      <span className="text-lg font-bold text-evm-green">{formatPrice(item.price)}</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => setTempQuantity(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                        className="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold active:bg-gray-300"
+                      >
+                        -
+                      </button>
+                      <span className="text-2xl font-bold w-12 text-center">{tempQuantity[item.id] || 0}</span>
+                      <button
+                        onClick={() => setTempQuantity(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                        className="w-10 h-10 bg-evm-green text-white rounded-full text-xl font-bold active:bg-green-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {Object.values(tempQuantity).some(q => q > 0) && (
+                <button
+                  onClick={() => {
+                    Object.entries(tempQuantity).forEach(([itemId, qty]) => {
+                      for (let i = 0; i < qty; i++) {
+                        addToCart(itemId);
+                      }
+                    });
+                    setTempQuantity({});
+                    setShowBottleSelection(false);
+                  }}
+                  className="w-full py-3 bg-evm-green text-white rounded-xl font-bold text-lg"
+                >
+                  Hinzufügen
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Beer Crate Selection Modal */}
+        {showBeerCrateSelection && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">📦 Kiste wählen</h2>
+                <button onClick={() => { setShowBeerCrateSelection(false); setTempQuantity({}); }} className="text-2xl text-gray-500">✕</button>
+              </div>
+              <div className="space-y-3 mb-4">
+                {menuItems.filter(i => i.id.includes('kiste-bier')).map(item => (
+                  <div key={item.id} className="p-4 bg-gray-50 rounded-xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{item.emoji}</span>
+                        <div className="text-left">
+                          <p className="font-bold text-gray-800">{item.name}</p>
+                          <p className="text-sm text-gray-500">{item.description}</p>
+                        </div>
+                      </div>
+                      <span className="text-lg font-bold text-evm-green">{formatPrice(item.price)}</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => setTempQuantity(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                        className="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold active:bg-gray-300"
+                      >
+                        -
+                      </button>
+                      <span className="text-2xl font-bold w-12 text-center">{tempQuantity[item.id] || 0}</span>
+                      <button
+                        onClick={() => setTempQuantity(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                        className="w-10 h-10 bg-evm-green text-white rounded-full text-xl font-bold active:bg-green-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {Object.values(tempQuantity).some(q => q > 0) && (
+                <button
+                  onClick={() => {
+                    Object.entries(tempQuantity).forEach(([itemId, qty]) => {
+                      for (let i = 0; i < qty; i++) {
+                        addToCart(itemId);
+                      }
+                    });
+                    setTempQuantity({});
+                    setShowBeerCrateSelection(false);
+                  }}
+                  className="w-full py-3 bg-evm-green text-white rounded-xl font-bold text-lg"
+                >
+                  Hinzufügen
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Wine Bottle Selection Modal */}
+        {showWineBottleSelection && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">🍾 Wein/Secco wählen</h2>
+                <button onClick={() => { setShowWineBottleSelection(false); setTempQuantity({}); }} className="text-2xl text-gray-500">✕</button>
+              </div>
+              <div className="space-y-3 mb-4">
+                {menuItems.filter(i => ['flasche-secco', 'flasche-wein-blanc', 'flasche-wein-weissburgunder', 'flasche-wein-jubilus', 'luftikuss'].includes(i.id)).map(item => (
+                  <div key={item.id} className="p-4 bg-gray-50 rounded-xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{item.emoji}</span>
+                        <div className="text-left">
+                          <p className="font-bold text-gray-800">{item.name}</p>
+                          {item.description && <p className="text-sm text-gray-500">{item.description}</p>}
+                        </div>
+                      </div>
+                      <span className="text-lg font-bold text-evm-green">{formatPrice(item.price)}</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => setTempQuantity(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                        className="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold active:bg-gray-300"
+                      >
+                        -
+                      </button>
+                      <span className="text-2xl font-bold w-12 text-center">{tempQuantity[item.id] || 0}</span>
+                      <button
+                        onClick={() => setTempQuantity(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                        className="w-10 h-10 bg-evm-green text-white rounded-full text-xl font-bold active:bg-green-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {Object.values(tempQuantity).some(q => q > 0) && (
+                <button
+                  onClick={() => {
+                    Object.entries(tempQuantity).forEach(([itemId, qty]) => {
+                      for (let i = 0; i < qty; i++) {
+                        addToCart(itemId);
+                      }
+                    });
+                    setTempQuantity({});
+                    setShowWineBottleSelection(false);
+                  }}
+                  className="w-full py-3 bg-evm-green text-white rounded-xl font-bold text-lg"
+                >
+                  Hinzufügen
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Shot/Kurze Selection Modal */}
+        {showShotSelection && (
+          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-800">🥃 Kiste Kurze wählen</h2>
+                <button onClick={() => { setShowShotSelection(false); setTempQuantity({}); }} className="text-2xl text-gray-500">✕</button>
+              </div>
+              <div className="space-y-3 mb-4">
+                {menuItems.filter(i => i.id.includes('kiste-klopfer')).map(item => (
+                  <div key={item.id} className="p-4 bg-gray-50 rounded-xl">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-2xl">{item.emoji}</span>
+                        <div className="text-left">
+                          <p className="font-bold text-gray-800">{item.name}</p>
+                        </div>
+                      </div>
+                      <span className="text-lg font-bold text-evm-green">{formatPrice(item.price)}</span>
+                    </div>
+                    <div className="flex items-center justify-center gap-3">
+                      <button
+                        onClick={() => setTempQuantity(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                        className="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold active:bg-gray-300"
+                      >
+                        -
+                      </button>
+                      <span className="text-2xl font-bold w-12 text-center">{tempQuantity[item.id] || 0}</span>
+                      <button
+                        onClick={() => setTempQuantity(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                        className="w-10 h-10 bg-evm-green text-white rounded-full text-xl font-bold active:bg-green-700"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {Object.values(tempQuantity).some(q => q > 0) && (
+                <button
+                  onClick={() => {
+                    Object.entries(tempQuantity).forEach(([itemId, qty]) => {
+                      for (let i = 0; i < qty; i++) {
+                        addToCart(itemId);
+                      }
+                    });
+                    setTempQuantity({});
+                    setShowShotSelection(false);
+                  }}
+                  className="w-full py-3 bg-evm-green text-white rounded-xl font-bold text-lg"
+                >
+                  Hinzufügen
+                </button>
+              )}
+            </div>
+          </div>
         )}
           </div>
 

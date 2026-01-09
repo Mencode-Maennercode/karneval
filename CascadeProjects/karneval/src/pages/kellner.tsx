@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { database, ref, onValue, remove, push } from '@/lib/firebase';
+import { menuItems, categories, premiumItems, formatPrice, MenuItem } from '@/lib/menu';
 
 interface Order {
   id: string;
@@ -10,6 +11,7 @@ interface Order {
   total?: number;
   timestamp: number;
   status: string;
+  orderedBy?: string; // Waiter name if order was placed by waiter
 }
 
 type AlertPhase = 'red' | 'orange' | 'green' | 'expired';
@@ -138,9 +140,18 @@ export default function WaiterPage() {
   // Waiter order form state
   const [showOrderForm, setShowOrderForm] = useState(false);
   const [orderTableNumber, setOrderTableNumber] = useState<number | null>(null);
-  const [orderWater, setOrderWater] = useState(0);
-  const [orderBeer, setOrderBeer] = useState(0);
+  const [orderCart, setOrderCart] = useState<{ [key: string]: number }>({});
   const [orderSent, setOrderSent] = useState(false);
+  const [activeOrderCategory, setActiveOrderCategory] = useState<string>('alle');
+  
+  // Selection modals for waiter
+  const [showWaiterBottleSelection, setShowWaiterBottleSelection] = useState(false);
+  const [showWaiterBeerCrateSelection, setShowWaiterBeerCrateSelection] = useState(false);
+  const [showWaiterWineBottleSelection, setShowWaiterWineBottleSelection] = useState(false);
+  const [showWaiterShotSelection, setShowWaiterShotSelection] = useState(false);
+  
+  // Temporary quantity for waiter modals
+  const [waiterTempQuantity, setWaiterTempQuantity] = useState<{ [key: string]: number }>({});
 
   // Force re-render every 10 seconds to update alert phases
   useEffect(() => {
@@ -223,14 +234,19 @@ export default function WaiterPage() {
           .sort((a, b) => b.timestamp - a.timestamp);
         
         // NEW ORDER DETECTED - TRIGGER ALARM!
+        // But NOT for orders placed by this waiter themselves
         if (myOrders.length > lastOrderCount && lastOrderCount >= 0 && alarmEnabled) {
           const newOrder = myOrders[0];
-          setNewOrderAlert(newOrder);
-          setAlarmActive(true);
           
-          // Start the loud alarm!
-          if (alarm) {
-            alarm.startAlarm();
+          // Skip alarm if this waiter placed the order
+          if (newOrder.orderedBy !== waiterName) {
+            setNewOrderAlert(newOrder);
+            setAlarmActive(true);
+            
+            // Start the loud alarm!
+            if (alarm) {
+              alarm.startAlarm();
+            }
           }
         }
         
@@ -322,28 +338,81 @@ export default function WaiterPage() {
   // Open order form for a specific table
   const handleOpenOrderForm = (tableNum: number) => {
     setOrderTableNumber(tableNum);
-    setOrderWater(0);
-    setOrderBeer(0);
+    setOrderCart({});
     setOrderSent(false);
+    setActiveOrderCategory('alle');
     setShowOrderForm(true);
+  };
+
+  // Cart helper functions for waiter order
+  const addToOrderCart = (itemId: string) => {
+    setOrderCart(prev => ({ ...prev, [itemId]: (prev[itemId] || 0) + 1 }));
+  };
+
+  const removeFromOrderCart = (itemId: string) => {
+    setOrderCart(prev => {
+      const newCart = { ...prev };
+      if (newCart[itemId] > 1) {
+        newCart[itemId]--;
+      } else {
+        delete newCart[itemId];
+      }
+      return newCart;
+    });
+  };
+
+  const getOrderCartQuantity = (itemId: string) => orderCart[itemId] || 0;
+
+  const orderCartTotal = Object.entries(orderCart).reduce((sum, [itemId, qty]) => {
+    const item = menuItems.find(i => i.id === itemId);
+    return sum + (item ? item.price * qty : 0);
+  }, 0);
+
+  const orderCartItemCount = Object.values(orderCart).reduce((sum, qty) => sum + qty, 0);
+
+  const getFilteredOrderItems = () => {
+    let items = activeOrderCategory === 'alle' ? menuItems : menuItems.filter(i => i.category === activeOrderCategory);
+    
+    // Sort by most ordered items for this table when in 'alle' category
+    if (activeOrderCategory === 'alle' && orderTableNumber) {
+      const tableOrders = orders.filter(o => o.tableNumber === orderTableNumber);
+      const itemCounts: { [key: string]: number } = {};
+      
+      tableOrders.forEach(order => {
+        if (order.items) {
+          order.items.forEach(item => {
+            const menuItem = menuItems.find(m => m.name === item.name);
+            if (menuItem) {
+              itemCounts[menuItem.id] = (itemCounts[menuItem.id] || 0) + item.quantity;
+            }
+          });
+        }
+      });
+      
+      items = [...items].sort((a, b) => {
+        const countA = itemCounts[a.id] || 0;
+        const countB = itemCounts[b.id] || 0;
+        return countB - countA;
+      });
+    }
+    
+    return items;
   };
 
   // Submit waiter order
   const handleSubmitWaiterOrder = async () => {
-    if (!orderTableNumber) return;
-    
-    const orderTotal = orderWater * 1 + orderBeer * 2;
-    if (orderTotal === 0) return;
+    if (!orderTableNumber || orderCartItemCount === 0) return;
 
-    const items: { name: string; price: number; quantity: number }[] = [];
-    if (orderWater > 0) items.push({ name: 'Wasser', price: 1, quantity: orderWater });
-    if (orderBeer > 0) items.push({ name: 'Bier', price: 2, quantity: orderBeer });
+    const items = Object.entries(orderCart).map(([itemId, qty]) => {
+      const item = menuItems.find(i => i.id === itemId)!;
+      return { name: item.name, price: item.price, quantity: qty };
+    });
 
     await push(ref(database, 'orders'), {
       tableCode: `waiter-${orderTableNumber}`,
       tableNumber: orderTableNumber,
       items: items,
-      total: orderTotal,
+      total: orderCartTotal,
       type: 'order',
       timestamp: Date.now(),
       status: 'new',
@@ -359,6 +428,7 @@ export default function WaiterPage() {
     setTimeout(() => {
       setShowOrderForm(false);
       setOrderSent(false);
+      setOrderCart({});
     }, 1500);
   };
 
@@ -681,8 +751,8 @@ export default function WaiterPage() {
 
       {/* Waiter Order Form Modal */}
       {showOrderForm && orderTableNumber && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 overflow-auto">
+          <div className="bg-white rounded-2xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
             {orderSent ? (
               <div className="text-center py-8">
                 <div className="text-6xl mb-4">✅</div>
@@ -690,8 +760,8 @@ export default function WaiterPage() {
               </div>
             ) : (
               <>
-                <div className="flex justify-between items-center mb-6">
-                  <h2 className="text-2xl font-bold text-gray-800">
+                <div className="flex justify-between items-center p-4 border-b">
+                  <h2 className="text-xl font-bold text-gray-800">
                     🛒 Bestellung T{orderTableNumber}
                   </h2>
                   <button
@@ -702,83 +772,367 @@ export default function WaiterPage() {
                   </button>
                 </div>
 
-                {/* Water */}
-                <div className="flex items-center justify-between mb-4 p-3 bg-blue-50 rounded-xl">
-                  <div>
-                    <p className="font-bold text-lg">💧 Wasser</p>
-                    <p className="text-gray-600">1,00 €</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => setOrderWater(Math.max(0, orderWater - 1))}
-                      className="w-12 h-12 bg-gray-200 rounded-full text-2xl font-bold active:bg-gray-300"
-                    >
-                      -
-                    </button>
-                    <span className="text-2xl font-bold w-8 text-center">{orderWater}</span>
-                    <button 
-                      onClick={() => setOrderWater(orderWater + 1)}
-                      className="w-12 h-12 bg-evm-green text-white rounded-full text-2xl font-bold active:bg-green-700"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                {/* Beer */}
-                <div className="flex items-center justify-between mb-6 p-3 bg-amber-50 rounded-xl">
-                  <div>
-                    <p className="font-bold text-lg">🍺 Bier</p>
-                    <p className="text-gray-600">2,00 €</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button 
-                      onClick={() => setOrderBeer(Math.max(0, orderBeer - 1))}
-                      className="w-12 h-12 bg-gray-200 rounded-full text-2xl font-bold active:bg-gray-300"
-                    >
-                      -
-                    </button>
-                    <span className="text-2xl font-bold w-8 text-center">{orderBeer}</span>
-                    <button 
-                      onClick={() => setOrderBeer(orderBeer + 1)}
-                      className="w-12 h-12 bg-evm-green text-white rounded-full text-2xl font-bold active:bg-green-700"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-
-                {/* Total */}
-                <div className="border-t-2 border-gray-200 pt-4 mb-6">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xl font-bold">Gesamt:</span>
-                    <span className="text-3xl font-bold text-evm-green">
-                      {(orderWater * 1 + orderBeer * 2).toFixed(2)} €
-                    </span>
-                  </div>
-                </div>
-
-                {/* Buttons */}
-                <div className="flex gap-3">
+                {/* Category Tabs */}
+                <div className="flex overflow-x-auto bg-gray-100 p-1 gap-1">
                   <button
-                    onClick={() => setShowOrderForm(false)}
-                    className="flex-1 py-4 bg-gray-200 text-gray-700 rounded-xl font-bold text-lg"
-                  >
-                    Abbrechen
-                  </button>
-                  <button
-                    onClick={handleSubmitWaiterOrder}
-                    disabled={orderWater + orderBeer === 0}
-                    className={`flex-1 py-4 rounded-xl font-bold text-lg ${
-                      orderWater + orderBeer > 0
-                        ? 'bg-evm-green text-white'
-                        : 'bg-gray-300 text-gray-500'
+                    onClick={() => setActiveOrderCategory('alle')}
+                    className={`px-3 py-1.5 rounded-lg font-bold text-xs whitespace-nowrap ${
+                      activeOrderCategory === 'alle' ? 'bg-evm-green text-white' : 'bg-white text-gray-700'
                     }`}
                   >
-                    Bestellen
+                    Alle
                   </button>
+                  {categories.map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setActiveOrderCategory(cat.id)}
+                      className={`px-3 py-1.5 rounded-lg font-bold text-xs whitespace-nowrap ${
+                        activeOrderCategory === cat.id ? 'bg-evm-green text-white' : 'bg-white text-gray-700'
+                      }`}
+                    >
+                      {cat.emoji} {cat.name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Premium Selection Buttons */}
+                {activeOrderCategory === 'alle' && (
+                  <div className="p-3 border-b bg-amber-50">
+                    <p className="text-xs font-bold text-amber-700 mb-2">✨ Für den Tisch</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      <button
+                        onClick={() => setShowWaiterBottleSelection(true)}
+                        className="p-2 bg-white border border-amber-200 rounded-lg text-center hover:bg-amber-50"
+                      >
+                        <div className="text-xl mb-1">🍾</div>
+                        <p className="text-xs font-bold">Flasche</p>
+                      </button>
+                      <button
+                        onClick={() => setShowWaiterBeerCrateSelection(true)}
+                        className="p-2 bg-white border border-amber-200 rounded-lg text-center hover:bg-amber-50"
+                      >
+                        <div className="text-xl mb-1">📦</div>
+                        <p className="text-xs font-bold">Kiste Bier</p>
+                      </button>
+                      <button
+                        onClick={() => setShowWaiterWineBottleSelection(true)}
+                        className="p-2 bg-white border border-amber-200 rounded-lg text-center hover:bg-amber-50"
+                      >
+                        <div className="text-xl mb-1">🍾</div>
+                        <p className="text-xs font-bold">Wein/Secco</p>
+                      </button>
+                      <button
+                        onClick={() => setShowWaiterShotSelection(true)}
+                        className="p-2 bg-white border border-amber-200 rounded-lg text-center hover:bg-amber-50"
+                      >
+                        <div className="text-xl mb-1">🥃</div>
+                        <p className="text-xs font-bold">Kurze</p>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Items List */}
+                <div className="flex-1 overflow-y-auto p-3 space-y-2 max-h-[40vh]">
+                  {getFilteredOrderItems().map(item => (
+                    <div
+                      key={item.id}
+                      className={`flex items-center justify-between p-2 rounded-xl ${
+                        item.isPremium ? 'bg-amber-50 border border-amber-200' : 'bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <span className="text-xl">{item.emoji}</span>
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm text-gray-800 truncate">{item.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {item.size && <span>{item.size} · </span>}
+                            <span className="font-semibold text-evm-green">{formatPrice(item.price)}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 ml-2">
+                        {getOrderCartQuantity(item.id) > 0 && (
+                          <>
+                            <button
+                              onClick={() => removeFromOrderCart(item.id)}
+                              className="w-8 h-8 bg-gray-200 rounded-full text-lg font-bold"
+                            >
+                              -
+                            </button>
+                            <span className="font-bold text-lg w-6 text-center">{getOrderCartQuantity(item.id)}</span>
+                          </>
+                        )}
+                        <button
+                          onClick={() => addToOrderCart(item.id)}
+                          className="w-8 h-8 bg-evm-green text-white rounded-full text-lg font-bold"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Footer with Total and Buttons */}
+                <div className="p-4 border-t bg-gray-50">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-bold text-gray-700">{orderCartItemCount} Artikel</span>
+                    <span className="text-2xl font-bold text-evm-green">{formatPrice(orderCartTotal)}</span>
+                  </div>
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowOrderForm(false)}
+                      className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-xl font-bold"
+                    >
+                      Abbrechen
+                    </button>
+                    <button
+                      onClick={handleSubmitWaiterOrder}
+                      disabled={orderCartItemCount === 0}
+                      className={`flex-1 py-3 rounded-xl font-bold ${
+                        orderCartItemCount > 0
+                          ? 'bg-evm-green text-white'
+                          : 'bg-gray-300 text-gray-500'
+                      }`}
+                    >
+                      Bestellen
+                    </button>
+                  </div>
                 </div>
               </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Waiter Selection Modals */}
+      {showWaiterBottleSelection && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800">🍾 Flasche wählen</h2>
+              <button onClick={() => { setShowWaiterBottleSelection(false); setWaiterTempQuantity({}); }} className="text-2xl text-gray-500">✕</button>
+            </div>
+            <div className="space-y-3 mb-4">
+              {menuItems.filter(i => ['flasche-wasser', 'flasche-cola', 'flasche-limo'].includes(i.id)).map(item => (
+                <div key={item.id} className="p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{item.emoji}</span>
+                      <div className="text-left">
+                        <p className="font-bold text-gray-800">{item.name}</p>
+                        <p className="text-sm text-gray-500">{item.size}</p>
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold text-evm-green">{formatPrice(item.price)}</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => setWaiterTempQuantity(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                      className="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold"
+                    >
+                      -
+                    </button>
+                    <span className="text-2xl font-bold w-12 text-center">{waiterTempQuantity[item.id] || 0}</span>
+                    <button
+                      onClick={() => setWaiterTempQuantity(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                      className="w-10 h-10 bg-evm-green text-white rounded-full text-xl font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {Object.values(waiterTempQuantity).some(q => q > 0) && (
+              <button
+                onClick={() => {
+                  Object.entries(waiterTempQuantity).forEach(([itemId, qty]) => {
+                    for (let i = 0; i < qty; i++) {
+                      addToOrderCart(itemId);
+                    }
+                  });
+                  setWaiterTempQuantity({});
+                  setShowWaiterBottleSelection(false);
+                }}
+                className="w-full py-3 bg-evm-green text-white rounded-xl font-bold text-lg"
+              >
+                Hinzufügen
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showWaiterBeerCrateSelection && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800">📦 Kiste wählen</h2>
+              <button onClick={() => { setShowWaiterBeerCrateSelection(false); setWaiterTempQuantity({}); }} className="text-2xl text-gray-500">✕</button>
+            </div>
+            <div className="space-y-3 mb-4">
+              {menuItems.filter(i => i.id.includes('kiste-bier')).map(item => (
+                <div key={item.id} className="p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{item.emoji}</span>
+                      <div className="text-left">
+                        <p className="font-bold text-gray-800">{item.name}</p>
+                        <p className="text-sm text-gray-500">{item.description}</p>
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold text-evm-green">{formatPrice(item.price)}</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => setWaiterTempQuantity(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                      className="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold"
+                    >
+                      -
+                    </button>
+                    <span className="text-2xl font-bold w-12 text-center">{waiterTempQuantity[item.id] || 0}</span>
+                    <button
+                      onClick={() => setWaiterTempQuantity(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                      className="w-10 h-10 bg-evm-green text-white rounded-full text-xl font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {Object.values(waiterTempQuantity).some(q => q > 0) && (
+              <button
+                onClick={() => {
+                  Object.entries(waiterTempQuantity).forEach(([itemId, qty]) => {
+                    for (let i = 0; i < qty; i++) {
+                      addToOrderCart(itemId);
+                    }
+                  });
+                  setWaiterTempQuantity({});
+                  setShowWaiterBeerCrateSelection(false);
+                }}
+                className="w-full py-3 bg-evm-green text-white rounded-xl font-bold text-lg"
+              >
+                Hinzufügen
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showWaiterWineBottleSelection && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800">🍾 Wein/Secco wählen</h2>
+              <button onClick={() => { setShowWaiterWineBottleSelection(false); setWaiterTempQuantity({}); }} className="text-2xl text-gray-500">✕</button>
+            </div>
+            <div className="space-y-3 mb-4">
+              {menuItems.filter(i => ['flasche-secco', 'flasche-wein-blanc', 'flasche-wein-weissburgunder', 'flasche-wein-jubilus', 'luftikuss'].includes(i.id)).map(item => (
+                <div key={item.id} className="p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{item.emoji}</span>
+                      <div className="text-left">
+                        <p className="font-bold text-gray-800">{item.name}</p>
+                        {item.description && <p className="text-sm text-gray-500">{item.description}</p>}
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold text-evm-green">{formatPrice(item.price)}</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => setWaiterTempQuantity(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                      className="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold"
+                    >
+                      -
+                    </button>
+                    <span className="text-2xl font-bold w-12 text-center">{waiterTempQuantity[item.id] || 0}</span>
+                    <button
+                      onClick={() => setWaiterTempQuantity(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                      className="w-10 h-10 bg-evm-green text-white rounded-full text-xl font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {Object.values(waiterTempQuantity).some(q => q > 0) && (
+              <button
+                onClick={() => {
+                  Object.entries(waiterTempQuantity).forEach(([itemId, qty]) => {
+                    for (let i = 0; i < qty; i++) {
+                      addToOrderCart(itemId);
+                    }
+                  });
+                  setWaiterTempQuantity({});
+                  setShowWaiterWineBottleSelection(false);
+                }}
+                className="w-full py-3 bg-evm-green text-white rounded-xl font-bold text-lg"
+              >
+                Hinzufügen
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showWaiterShotSelection && (
+        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold text-gray-800">🥃 Kiste Kurze wählen</h2>
+              <button onClick={() => { setShowWaiterShotSelection(false); setWaiterTempQuantity({}); }} className="text-2xl text-gray-500">✕</button>
+            </div>
+            <div className="space-y-3 mb-4">
+              {menuItems.filter(i => i.id.includes('kiste-klopfer')).map(item => (
+                <div key={item.id} className="p-4 bg-gray-50 rounded-xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">{item.emoji}</span>
+                      <div className="text-left">
+                        <p className="font-bold text-gray-800">{item.name}</p>
+                      </div>
+                    </div>
+                    <span className="text-lg font-bold text-evm-green">{formatPrice(item.price)}</span>
+                  </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <button
+                      onClick={() => setWaiterTempQuantity(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))}
+                      className="w-10 h-10 bg-gray-200 rounded-full text-xl font-bold"
+                    >
+                      -
+                    </button>
+                    <span className="text-2xl font-bold w-12 text-center">{waiterTempQuantity[item.id] || 0}</span>
+                    <button
+                      onClick={() => setWaiterTempQuantity(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }))}
+                      className="w-10 h-10 bg-evm-green text-white rounded-full text-xl font-bold"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {Object.values(waiterTempQuantity).some(q => q > 0) && (
+              <button
+                onClick={() => {
+                  Object.entries(waiterTempQuantity).forEach(([itemId, qty]) => {
+                    for (let i = 0; i < qty; i++) {
+                      addToOrderCart(itemId);
+                    }
+                  });
+                  setWaiterTempQuantity({});
+                  setShowWaiterShotSelection(false);
+                }}
+                className="w-full py-3 bg-evm-green text-white rounded-xl font-bold text-lg"
+              >
+                Hinzufügen
+              </button>
             )}
           </div>
         </div>
