@@ -152,6 +152,9 @@ export default function WaiterPage() {
   
   // Temporary quantity for waiter modals
   const [waiterTempQuantity, setWaiterTempQuantity] = useState<{ [key: string]: number }>({});
+  
+  // Statistics for sorting by table orders
+  const [statistics, setStatistics] = useState<{ tables: { [key: number]: { items: { [key: string]: { quantity: number } } } } }>({ tables: {} });
 
   // Force re-render every 10 seconds to update alert phases
   useEffect(() => {
@@ -260,6 +263,20 @@ export default function WaiterPage() {
     
     return () => unsubscribe();
   }, [isSetup, assignedTables, lastOrderCount, alarmEnabled]);
+
+  // Subscribe to statistics for table-specific sorting
+  useEffect(() => {
+    const statsRef = ref(database, 'statistics');
+    const unsubscribe = onValue(statsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setStatistics(data);
+      } else {
+        setStatistics({ tables: {} });
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   const handleSetup = () => {
     if (!waiterName.trim()) {
@@ -373,21 +390,20 @@ export default function WaiterPage() {
   const getFilteredOrderItems = () => {
     let items = activeOrderCategory === 'alle' ? menuItems : menuItems.filter(i => i.category === activeOrderCategory);
     
-    // Sort by most ordered items for this table when in 'alle' category
+    // Sort by most ordered items for this table when in 'alle' category using statistics
     if (activeOrderCategory === 'alle' && orderTableNumber) {
-      const tableOrders = orders.filter(o => o.tableNumber === orderTableNumber);
+      const tableStats = statistics.tables?.[orderTableNumber];
       const itemCounts: { [key: string]: number } = {};
       
-      tableOrders.forEach(order => {
-        if (order.items) {
-          order.items.forEach(item => {
-            const menuItem = menuItems.find(m => m.name === item.name);
-            if (menuItem) {
-              itemCounts[menuItem.id] = (itemCounts[menuItem.id] || 0) + item.quantity;
-            }
-          });
-        }
-      });
+      // Use statistics.tables[tableNumber].items which contains completed orders
+      if (tableStats?.items) {
+        Object.entries(tableStats.items).forEach(([itemName, data]) => {
+          const menuItem = menuItems.find(m => m.name === itemName);
+          if (menuItem) {
+            itemCounts[menuItem.id] = data.quantity;
+          }
+        });
+      }
       
       items = [...items].sort((a, b) => {
         const countA = itemCounts[a.id] || 0;

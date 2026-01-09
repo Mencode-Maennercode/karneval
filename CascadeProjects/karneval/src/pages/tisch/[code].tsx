@@ -30,7 +30,7 @@ export default function TablePage() {
   const [orderSent, setOrderSent] = useState(false);
   const [waiterCalled, setWaiterCalled] = useState(false);
   const [orderHistory, setOrderHistory] = useState<OrderHistory[]>([]);
-  const [allOrders, setAllOrders] = useState<any[]>([]);
+  const [statistics, setStatistics] = useState<{ itemTotals: { [key: string]: { quantity: number; amount: number } } }>({ itemTotals: {} });
   const [, setTick] = useState(0);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showInstallButton, setShowInstallButton] = useState(false);
@@ -160,19 +160,15 @@ export default function TablePage() {
     };
   }, []);
 
-  // Subscribe to all orders to calculate popular items
+  // Subscribe to statistics for popular items calculation
   useEffect(() => {
-    const ordersRef = ref(database, 'orders');
-    const unsubscribe = onValue(ordersRef, (snapshot) => {
+    const statsRef = ref(database, 'statistics');
+    const unsubscribe = onValue(statsRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const ordersArray = Object.entries(data).map(([id, order]: [string, any]) => ({
-          id,
-          ...order
-        }));
-        setAllOrders(ordersArray);
+        setStatistics(data);
       } else {
-        setAllOrders([]);
+        setStatistics({ itemTotals: {} });
       }
     });
     return () => unsubscribe();
@@ -219,20 +215,19 @@ export default function TablePage() {
 
   const cartItemCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
 
-  // Calculate top 5 popular items based on all orders (excluding glasses)
+  // Calculate top 5 popular items based on statistics (excluding glasses)
   const getTop5PopularItems = (): Set<string> => {
     const itemCounts: { [key: string]: number } = {};
     
-    allOrders.forEach(order => {
-      if (order.items) {
-        order.items.forEach((item: OrderItem) => {
-          const menuItem = menuItems.find(m => m.name === item.name);
-          if (menuItem && menuItem.category !== 'glaeser') {
-            itemCounts[menuItem.id] = (itemCounts[menuItem.id] || 0) + item.quantity;
-          }
-        });
-      }
-    });
+    // Use statistics.itemTotals which contains completed orders
+    if (statistics.itemTotals) {
+      Object.entries(statistics.itemTotals).forEach(([itemName, data]) => {
+        const menuItem = menuItems.find(m => m.name === itemName);
+        if (menuItem && menuItem.category !== 'glaeser') {
+          itemCounts[menuItem.id] = data.quantity;
+        }
+      });
+    }
     
     const sortedItems = Object.entries(itemCounts)
       .sort((a, b) => b[1] - a[1])
@@ -427,6 +422,14 @@ export default function TablePage() {
               </div>
             )}
 
+            {/* Call Waiter Button - Above Order Form */}
+            <button 
+              onClick={handleCallWaiter}
+              className="w-full bg-evm-yellow text-black py-5 rounded-2xl text-xl font-bold shadow-xl active:scale-95 transition-transform mb-4 ring-2 ring-white/30"
+            >
+              🙋 Köbes kumm ran
+            </button>
+
             {/* Order Form - only show when not disabled */}
         {!isOrderFormDisabled ? (
           <div className="bg-white/90 backdrop-blur rounded-2xl shadow-xl mb-4 overflow-hidden">
@@ -600,17 +603,9 @@ export default function TablePage() {
           <div className="bg-yellow-100/90 backdrop-blur rounded-2xl p-6 shadow-xl mb-4 text-center">
             <div className="text-4xl mb-3">🚫</div>
             <h2 className="text-xl font-bold text-yellow-800 mb-2">Bestellung momentan nicht möglich</h2>
-            <p className="text-yellow-700">Bitte rufen Sie den Köbes über den Button unten.</p>
+            <p className="text-yellow-700">Bitte rufen Sie den Köbes über den Button oben.</p>
           </div>
         )}
-
-        {/* Call Waiter Button - ALWAYS VISIBLE */}
-        <button 
-          onClick={handleCallWaiter}
-          className="w-full bg-evm-yellow text-black py-5 rounded-2xl text-xl font-bold shadow-xl active:scale-95 transition-transform mt-4 ring-2 ring-white/30"
-        >
-          🙋 Köbes kumm ran
-        </button>
 
         <p className="text-white/70 text-center mt-6 text-sm">
           Bezahlung erfolgt am Tisch
