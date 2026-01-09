@@ -54,10 +54,8 @@ export const menuItems: MenuItem[] = [
   { id: 'luftikuss', name: 'LuftiKuss', emoji: '🍾', price: 20.00, category: 'wein', isPremium: true, description: 'Alkoholfreier Sekt' },
   
   // Kurze (Shots)
-  { id: 'berliner-luft', name: 'Berliner Luft', emoji: '🧊', price: 3.00, category: 'kurze', isPopular: true },
   { id: 'baerbelchen', name: 'Bärbelchen', emoji: '🍬', price: 3.00, category: 'kurze' },
   { id: 'glitter-pitter', name: 'Glitter Pitter', emoji: '✨', price: 3.00, category: 'kurze' },
-  { id: 'kiste-klopfer-berliner', name: 'Kiste Berliner Luft', emoji: '📦', price: 50.00, category: 'kurze', isPremium: true },
   { id: 'kiste-klopfer-baerbelchen', name: 'Kiste Bärbelchen', emoji: '📦', price: 50.00, category: 'kurze', isPremium: true },
   { id: 'kiste-klopfer-glitter', name: 'Kiste Glitter Pitter', emoji: '📦', price: 50.00, category: 'kurze', isPremium: true },
   
