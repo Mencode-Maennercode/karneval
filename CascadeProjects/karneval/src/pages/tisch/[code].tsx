@@ -219,7 +219,7 @@ export default function TablePage() {
 
   const cartItemCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
 
-  // Calculate top 5 popular items based on all orders
+  // Calculate top 5 popular items based on all orders (excluding glasses)
   const getTop5PopularItems = (): Set<string> => {
     const itemCounts: { [key: string]: number } = {};
     
@@ -227,7 +227,7 @@ export default function TablePage() {
       if (order.items) {
         order.items.forEach((item: OrderItem) => {
           const menuItem = menuItems.find(m => m.name === item.name);
-          if (menuItem) {
+          if (menuItem && menuItem.category !== 'glaeser') {
             itemCounts[menuItem.id] = (itemCounts[menuItem.id] || 0) + item.quantity;
           }
         });
@@ -294,10 +294,18 @@ export default function TablePage() {
     setShowCart(false);
   };
 
-  // Filter items by category
+  // Filter items by category and sort by popularity
   const getFilteredItems = () => {
-    if (activeCategory === 'alle') return dynamicMenuItems;
-    return dynamicMenuItems.filter(i => i.category === activeCategory);
+    let items = activeCategory === 'alle' ? dynamicMenuItems : dynamicMenuItems.filter(i => i.category === activeCategory);
+    
+    // Sort by popularity (popular items first)
+    items = [...items].sort((a, b) => {
+      if (a.isPopular && !b.isPopular) return -1;
+      if (!a.isPopular && b.isPopular) return 1;
+      return 0;
+    });
+    
+    return items;
   };
 
   // Filter order history to only show orders from last 6 minutes
@@ -386,20 +394,24 @@ export default function TablePage() {
       </div>
       {/* Header */}
       <div className="bg-evm-yellow p-4 shadow-lg relative z-10">
-        <div className="flex flex-col sm:grid sm:grid-cols-3 sm:items-center gap-2">
-          <div className="flex items-center justify-center sm:justify-start gap-3 sm:col-start-1">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
             <img 
               src="https://www.energieschub.evm.de/media/ecb72371a2/1a53b5737ffd_180x180_boxed.jpg" 
               alt="Logo" 
               className="w-16 h-16 rounded-full shadow-md mix-blend-multiply"
             />
-            <h1 className="text-2xl font-extrabold text-evm-green drop-shadow text-center sm:text-left">Fastelovend 2026</h1>
+            <h1 className="text-xl sm:text-2xl font-extrabold text-evm-green drop-shadow">Fastelovend 2026</h1>
           </div>
-          <div className="text-center sm:col-start-2">
-            <span className="inline-block px-4 py-1 rounded-full bg-white/80 backdrop-blur text-evm-green font-black text-2xl sm:text-3xl shadow-lg whitespace-nowrap">
-              Tisch {tableNumber}
-            </span>
-          </div>
+          <button 
+            onClick={handleCallWaiter}
+            className="bg-evm-green text-white px-4 py-2 rounded-xl font-bold shadow-lg active:scale-95 transition-transform whitespace-nowrap"
+          >
+            🙋 Köbes
+          </button>
+          <span className="px-3 py-1 rounded-full bg-white/80 backdrop-blur text-evm-green font-black text-xl sm:text-2xl shadow-lg whitespace-nowrap">
+            Tisch {tableNumber}
+          </span>
         </div>
       </div>
 
@@ -506,7 +518,7 @@ export default function TablePage() {
                       <div className="flex justify-between items-start mb-1">
                         <span className="text-2xl">🥃</span>
                         <span className="text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                          ab 50,00 €
+                          50,00 €
                         </span>
                       </div>
                       <p className="font-bold text-sm text-gray-800">Kiste Kurze</p>
@@ -595,14 +607,6 @@ export default function TablePage() {
             <p className="text-yellow-700">Bitte rufen Sie den Köbes über den Button unten.</p>
           </div>
         )}
-
-        {/* Call Waiter Button - ALWAYS VISIBLE */}
-        <button 
-          onClick={handleCallWaiter}
-          className="w-full bg-evm-yellow text-black py-5 rounded-2xl text-xl font-bold shadow-xl active:scale-95 transition-transform mt-4 ring-2 ring-white/30"
-        >
-          🙋 Köbes kumm ran
-        </button>
 
         <p className="text-white/70 text-center mt-6 text-sm">
           Bezahlung erfolgt am Tisch
