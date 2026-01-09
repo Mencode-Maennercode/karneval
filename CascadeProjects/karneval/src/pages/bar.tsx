@@ -142,7 +142,12 @@ export default function BarDashboard() {
     if (order && order.type === 'order' && order.items) {
       // Update statistics in Firebase
       const statsRef = ref(database, 'statistics');
-      const currentStats = { ...statistics };
+      const currentStats = { 
+        tables: statistics.tables || {},
+        totalOrders: statistics.totalOrders || 0,
+        totalAmount: statistics.totalAmount || 0,
+        itemTotals: statistics.itemTotals || {}
+      };
       
       // Initialize table stats if not exists
       if (!currentStats.tables[order.tableNumber]) {
