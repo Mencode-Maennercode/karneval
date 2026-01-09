@@ -298,7 +298,7 @@ export default function TablePage() {
   const getFilteredItems = () => {
     let items = activeCategory === 'alle' ? dynamicMenuItems : dynamicMenuItems.filter(i => i.category === activeCategory);
     
-    // Sort by popularity (popular items first)
+    // Sort by popularity (popular items first) in ALL categories
     items = [...items].sort((a, b) => {
       if (a.isPopular && !b.isPopular) return -1;
       if (!a.isPopular && b.isPopular) return 1;
@@ -394,24 +394,20 @@ export default function TablePage() {
       </div>
       {/* Header */}
       <div className="bg-evm-yellow p-4 shadow-lg relative z-10">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:grid sm:grid-cols-3 sm:items-center gap-2">
+          <div className="flex items-center justify-center sm:justify-start gap-3 sm:col-start-1">
             <img 
               src="https://www.energieschub.evm.de/media/ecb72371a2/1a53b5737ffd_180x180_boxed.jpg" 
               alt="Logo" 
               className="w-16 h-16 rounded-full shadow-md mix-blend-multiply"
             />
-            <h1 className="text-xl sm:text-2xl font-extrabold text-evm-green drop-shadow">Fastelovend 2026</h1>
+            <h1 className="text-2xl font-extrabold text-evm-green drop-shadow text-center sm:text-left">Fastelovend 2026</h1>
           </div>
-          <button 
-            onClick={handleCallWaiter}
-            className="bg-evm-green text-white px-4 py-2 rounded-xl font-bold shadow-lg active:scale-95 transition-transform whitespace-nowrap"
-          >
-            🙋 Köbes
-          </button>
-          <span className="px-3 py-1 rounded-full bg-white/80 backdrop-blur text-evm-green font-black text-xl sm:text-2xl shadow-lg whitespace-nowrap">
-            Tisch {tableNumber}
-          </span>
+          <div className="text-center sm:col-start-2">
+            <span className="inline-block px-4 py-1 rounded-full bg-white/80 backdrop-blur text-evm-green font-black text-2xl sm:text-3xl shadow-lg whitespace-nowrap">
+              Tisch {tableNumber}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -607,6 +603,14 @@ export default function TablePage() {
             <p className="text-yellow-700">Bitte rufen Sie den Köbes über den Button unten.</p>
           </div>
         )}
+
+        {/* Call Waiter Button - ALWAYS VISIBLE */}
+        <button 
+          onClick={handleCallWaiter}
+          className="w-full bg-evm-yellow text-black py-5 rounded-2xl text-xl font-bold shadow-xl active:scale-95 transition-transform mt-4 ring-2 ring-white/30"
+        >
+          🙋 Köbes kumm ran
+        </button>
 
         <p className="text-white/70 text-center mt-6 text-sm">
           Bezahlung erfolgt am Tisch
