@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { database, ref, onValue, remove, push } from '@/lib/firebase';
+import { database, ref, onValue, remove, push, set } from '@/lib/firebase';
 import { menuItems, categories, premiumItems, formatPrice, MenuItem } from '@/lib/menu';
 
 interface Order {
@@ -306,6 +306,58 @@ export default function WaiterPage() {
   };
 
   const handleDismiss = async (orderId: string) => {
+    // Find the order to update statistics before removing
+    const order = orders.find(o => o.id === orderId);
+    if (order && order.type === 'order' && order.items) {
+      // Update statistics in Firebase
+      const statsRef = ref(database, 'statistics');
+      const currentStats = { ...statistics } as any;
+      
+      // Initialize tables if not exists
+      if (!currentStats.tables) {
+        currentStats.tables = {};
+      }
+      if (!currentStats.itemTotals) {
+        currentStats.itemTotals = {};
+      }
+      
+      // Initialize table stats if not exists
+      if (!currentStats.tables[order.tableNumber]) {
+        currentStats.tables[order.tableNumber] = {
+          tableNumber: order.tableNumber,
+          totalOrders: 0,
+          totalAmount: 0,
+          items: {}
+        };
+      }
+      
+      const tableStats = currentStats.tables[order.tableNumber];
+      tableStats.totalOrders += 1;
+      tableStats.totalAmount += order.total || 0;
+      
+      // Update item counts for table
+      order.items.forEach(item => {
+        if (!tableStats.items[item.name]) {
+          tableStats.items[item.name] = { quantity: 0, amount: 0 };
+        }
+        tableStats.items[item.name].quantity += item.quantity;
+        tableStats.items[item.name].amount += item.price * item.quantity;
+        
+        // Update global item totals
+        if (!currentStats.itemTotals[item.name]) {
+          currentStats.itemTotals[item.name] = { quantity: 0, amount: 0 };
+        }
+        currentStats.itemTotals[item.name].quantity += item.quantity;
+        currentStats.itemTotals[item.name].amount += item.price * item.quantity;
+      });
+      
+      // Update global totals
+      currentStats.totalOrders = (currentStats.totalOrders || 0) + 1;
+      currentStats.totalAmount = (currentStats.totalAmount || 0) + (order.total || 0);
+      
+      await set(statsRef, currentStats);
+    }
+    
     await remove(ref(database, `orders/${orderId}`));
   };
 
@@ -408,7 +460,12 @@ export default function WaiterPage() {
       items = [...items].sort((a, b) => {
         const countA = itemCounts[a.id] || 0;
         const countB = itemCounts[b.id] || 0;
-        return countB - countA;
+        
+        // First sort by quantity (most ordered first)
+        if (countB !== countA) return countB - countA;
+        
+        // If same quantity, sort by price (more expensive first)
+        return b.price - a.price;
       });
     }
     

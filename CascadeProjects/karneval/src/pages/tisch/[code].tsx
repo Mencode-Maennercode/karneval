@@ -289,15 +289,25 @@ export default function TablePage() {
     setShowCart(false);
   };
 
-  // Filter items by category and sort by popularity
+  // Get quantity sold for an item from statistics
+  const getItemQuantity = (itemName: string): number => {
+    return statistics.itemTotals?.[itemName]?.quantity || 0;
+  };
+
+  // Filter items by category and sort by popularity (quantity sold descending, then by price)
   const getFilteredItems = () => {
     let items = activeCategory === 'alle' ? dynamicMenuItems : dynamicMenuItems.filter(i => i.category === activeCategory);
     
-    // Sort by popularity (popular items first) in ALL categories
+    // Sort by quantity sold (descending), then by price (descending) as tiebreaker
     items = [...items].sort((a, b) => {
-      if (a.isPopular && !b.isPopular) return -1;
-      if (!a.isPopular && b.isPopular) return 1;
-      return 0;
+      const qtyA = getItemQuantity(a.name);
+      const qtyB = getItemQuantity(b.name);
+      
+      // First sort by quantity (most sold first)
+      if (qtyB !== qtyA) return qtyB - qtyA;
+      
+      // If same quantity, sort by price (more expensive first)
+      return b.price - a.price;
     });
     
     return items;
