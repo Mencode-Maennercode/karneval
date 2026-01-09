@@ -24,17 +24,20 @@ export const menuItems: MenuItem[] = [
   // Softdrinks
   { id: 'cola', name: 'Cola', emoji: '🥤', price: 2.50, size: '0,2l', category: 'softdrinks', isPopular: true },
   { id: 'cola-zero', name: 'Cola Zero', emoji: '🥤', price: 2.50, size: '0,2l', category: 'softdrinks' },
-  { id: 'limo', name: 'Limo', emoji: '🍋', price: 2.50, size: '0,2l', category: 'softdrinks' },
+  { id: 'sprite', name: 'Sprite', emoji: '🍋', price: 2.50, size: '0,2l', category: 'softdrinks' },
+  { id: 'fanta', name: 'Fanta', emoji: '🍊', price: 2.50, size: '0,2l', category: 'softdrinks' },
   { id: 'apfelschorle', name: 'Apfelschorle', emoji: '🍎', price: 2.50, size: '0,2l', category: 'softdrinks', isPopular: true },
   { id: 'wasser', name: 'Wasser', emoji: '💧', price: 2.50, size: '0,2l', category: 'softdrinks', isPopular: true },
   { id: 'flasche-wasser', name: 'Flasche Wasser', emoji: '💧', price: 5.00, size: '0,75l', category: 'softdrinks', isPremium: true, description: 'Für den ganzen Tisch' },
   { id: 'flasche-cola', name: 'Flasche Cola', emoji: '🍾', price: 6.00, size: '1,0l', category: 'softdrinks', isPremium: true, description: 'Zum Teilen' },
-  { id: 'flasche-limo', name: 'Flasche Limo', emoji: '🍾', price: 6.00, size: '1,0l', category: 'softdrinks', isPremium: true, description: 'Zum Teilen' },
+  { id: 'flasche-sprite', name: 'Flasche Sprite', emoji: '🍾', price: 6.00, size: '1,0l', category: 'softdrinks', isPremium: true, description: 'Zum Teilen' },
+  { id: 'flasche-fanta', name: 'Flasche Fanta', emoji: '🍾', price: 6.00, size: '1,0l', category: 'softdrinks', isPremium: true, description: 'Zum Teilen' },
   
   // Bier
   { id: 'pils', name: 'Pils', emoji: '🍺', price: 3.00, size: '0,33l', category: 'bier', isPopular: true },
   { id: 'koelsch', name: 'Kölsch', emoji: '🍺', price: 3.00, size: '0,33l', category: 'bier', isPopular: true },
   { id: 'radler-00', name: 'Radler 0,0%', emoji: '🍺', price: 3.00, size: '0,33l', category: 'bier' },
+  { id: 'radler', name: 'Radler', emoji: '🍺', price: 3.00, size: '0,33l', category: 'bier' },
   { id: 'kiste-bier-bitburger', name: 'Kiste Bitburger', emoji: '📦', price: 60.00, category: 'bier', isPremium: true, description: '24 Flaschen Bitburger' },
   { id: 'kiste-bier-koelsch', name: 'Kiste Kölsch', emoji: '📦', price: 60.00, category: 'bier', isPremium: true, description: '24 Flaschen Kölsch' },
   { id: 'kiste-bier-gemischt', name: 'Kiste Gemischt', emoji: '📦', price: 60.00, category: 'bier', isPremium: true, description: '10 Bitburger, 10 Kölsch, 4 Radler 0,0%' },
