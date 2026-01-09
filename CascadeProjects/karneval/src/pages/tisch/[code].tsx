@@ -439,7 +439,7 @@ export default function TablePage() {
             >
               🙋 Köbes kumm ran
               <div className="text-sm font-normal mt-1">
-                (Hier kannst du auch einfach den Kellner rufen)
+                Hier kannst du einfach die Kellner:in rufen
               </div>
             </button>
 
