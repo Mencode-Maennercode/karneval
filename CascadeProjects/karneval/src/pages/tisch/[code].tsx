@@ -438,6 +438,9 @@ export default function TablePage() {
               className="w-full bg-evm-yellow text-black py-5 rounded-2xl text-xl font-bold shadow-xl active:scale-95 transition-transform mb-4 ring-2 ring-white/30"
             >
               🙋 Köbes kumm ran
+              <div className="text-sm font-normal mt-1">
+                (Hier kannst du auch einfach den Kellner rufen)
+              </div>
             </button>
 
             {/* Order Form - only show when not disabled */}
